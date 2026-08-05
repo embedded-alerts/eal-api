@@ -13,12 +13,12 @@ url = "https://github.com/embedded-alerts/eal-api"
 [publish]
 include_readme = true
 tag_format = "v{version}"
-exclude = [".env", ".env.*", "node_modules/**", "zed_modules/**", "target/**", "dist/**", "*.log"]
+exclude = [".env", ".env.*", "node_modules/**", ".vendor/.zed/**", "target/**", "dist/**", "*.log"]
 
 [dependencies]
 "embedded-alerts/eal-interfaces" = "^0.1.0"
 "embedded-alerts/eal-libs" = "^0.1.0"
 
 [install]
-dir = "zed_modules"
+dir = ".vendor/.zed"
 adapter = "rust"
