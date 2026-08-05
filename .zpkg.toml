@@ -1,0 +1,20 @@
+[package]
+org = "embedded-alerts"
+name = "eal-api"
+version = "0.1.0"
+description = "Rust API server for Embedded Alerts"
+license = "MIT"
+language = "rust"
+
+[package.repository]
+vcs = "git"
+url = "https://github.com/embedded-alerts/eal-api"
+
+[publish]
+include_readme = true
+tag_format = "v{version}"
+exclude = [".env", ".env.*", "node_modules/**", "target/**", "dist/**", "*.log"]
+
+[dependencies]
+"embedded-alerts/eal-interfaces" = "^0.1.0"
+"embedded-alerts/eal-libs" = "^0.1.0"
