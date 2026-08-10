@@ -27,6 +27,22 @@ This repository was bootstrapped on 2026-08-04. It is designed as an independent
 - `/v1/embeddings/search`
 - `/v1/ws`
 
+## Runtime safety boundary
+
+Alert rule handlers currently use a process-local `HashMap`; a configured PostgreSQL
+connection does not make those handlers durable. To prevent an accidental production
+deployment from presenting that scaffold as a real alert service, startup now fails
+when `APP_ENV` is `production` or `prod`.
+
+Use `APP_ENV=development` or `APP_ENV=test` only for scaffold work. `/healthz` reports
+`status=degraded`, `storage_mode=process_local_memory`, and
+`production_ready=false` until DEN-3459 replaces the handlers with tenant-owned
+SeaORM/PostgreSQL persistence.
+
+Removing this guard is not the completion condition. Production enablement also
+requires Shared Auth claim validation, tenant-scoped HTTP and WebSocket authorization,
+explicit CORS origins, durable migrations, and restart/isolation canaries.
+
 ## Development
 
 ```bash
