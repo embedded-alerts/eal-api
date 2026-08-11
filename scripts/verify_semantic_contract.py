@@ -15,6 +15,31 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(message)
 
 
+def joined_sources(directory: Path, pattern: str) -> str:
+    """Read only checked-in contract sources, never build/cache output."""
+    return "\n".join(path.read_text() for path in sorted(directory.glob(pattern)))
+
+
+def verify_no_nextjs_runtime() -> None:
+    for config_name in ("next.config.js", "next.config.mjs", "next.config.ts"):
+        require(
+            not (ROOT / config_name).exists(),
+            f"Next.js runtime config must not be introduced: {config_name}",
+        )
+
+    package_manifest = ROOT / "package.json"
+    if not package_manifest.exists():
+        return
+
+    package = json.loads(package_manifest.read_text())
+    dependencies = {
+        **package.get("dependencies", {}),
+        **package.get("devDependencies", {}),
+        **package.get("peerDependencies", {}),
+    }
+    require("next" not in dependencies, "Next.js must not be added as a dependency")
+
+
 def main() -> None:
     openapi = json.loads((ROOT / "openapi/eal-api.json").read_text())
     required_paths = {
@@ -32,15 +57,14 @@ def main() -> None:
             f"OpenAPI is missing methods for {path}: {methods}",
         )
 
-    main_rs = "\n".join(path.read_text() for path in sorted((ROOT / "src").glob("main*.rs")))
+    main_rs = joined_sources(ROOT / "src", "main*.rs")
     for route in required_paths:
-        axum_route = route.replace("{id}", "{id}")
         require(
-            f'.route("{axum_route}"' in main_rs,
+            f'.route("{route}"' in main_rs,
             f"Axum router is missing {route}",
         )
 
-    extractor = "\n".join(path.read_text() for path in sorted((ROOT / "src/semantic").glob("extract*.rs")))
+    extractor = joined_sources(ROOT / "src/semantic", "extract*.rs")
     for segment_kind in [
         "Title",
         "Heading",
@@ -56,7 +80,7 @@ def main() -> None:
             f"extractor is missing {segment_kind} segment support",
         )
 
-    crawler = "\n".join(path.read_text() for path in sorted((ROOT / "src/semantic").glob("crawl*.rs")))
+    crawler = joined_sources(ROOT / "src/semantic", "crawl*.rs")
     for guard in [
         ".no_proxy()",
         "Policy::none()",
@@ -85,14 +109,7 @@ def main() -> None:
             f"migration is missing RLS for {table}",
         )
 
-    repository_text = "\n".join(
-        path.read_text(errors="ignore")
-        for path in ROOT.rglob("*")
-        if path.is_file() and ".git" not in path.parts
-    ).lower()
-    require("next.js" not in repository_text or "there is no next.js" in repository_text,
-            "Next.js implementation text was introduced")
-
+    verify_no_nextjs_runtime()
     print("semantic contract verified")
 
 
