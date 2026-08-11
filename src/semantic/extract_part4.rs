@@ -128,7 +128,9 @@ mod tests {
         )
         .expect("query");
         assert_eq!(query.segments[0].kind, SegmentKind::Query);
-        assert!(query.keywords.iter().any(|keyword| keyword == "renewable"));
+        assert!(query.segments.iter().any(|segment| {
+            segment.kind == SegmentKind::Keyword && segment.text.contains("renewable")
+        }));
         assert!(query.entities.iter().any(|entity| entity.contains("Acme Corporation")));
     }
 
