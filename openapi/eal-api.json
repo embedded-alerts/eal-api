@@ -1,0 +1,65 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Embedded Alerts API",
+    "version": "0.1.0-den-3461",
+    "description": "Domain-allowlisted public-page ingestion and model-versioned semantic matching. Production remains blocked until durable tenant persistence and Shared Auth are complete."
+  },
+  "paths": {
+    "/healthz": {"get": {"operationId": "health", "responses": {"200": {"description": "Runtime safety and embedding health"}}}},
+    "/v1/alerts": {
+      "get": {"operationId": "listAlertRules", "responses": {"200": {"description": "Alert rules"}}},
+      "post": {"operationId": "createAlertRule", "responses": {"201": {"description": "Alert rule created"}}}
+    },
+    "/v1/alerts/{id}": {
+      "parameters": [{"$ref": "#/components/parameters/PathId"}],
+      "get": {"operationId": "getAlertRule", "responses": {"200": {"description": "Alert rule"}, "404": {"$ref": "#/components/responses/Error"}}}
+    },
+    "/v1/sources": {
+      "parameters": [{"$ref": "#/components/parameters/TenantHeader"}],
+      "get": {"operationId": "listSourceDomains", "responses": {"200": {"description": "Configured source domains", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/SourceDomain"}}}}}}},
+      "post": {"operationId": "createSourceDomain", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateSourceDomain"}}}}, "responses": {"201": {"description": "Source domain created"}, "400": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}}
+    },
+    "/v1/sources/{id}/scan": {
+      "parameters": [{"$ref": "#/components/parameters/TenantHeader"}, {"$ref": "#/components/parameters/PathId"}],
+      "post": {"operationId": "scanSourceDomain", "description": "Discovers sitemaps and bounded same-domain links, respects robots.txt, fetches public HTML, extracts multiple semantic views, and embeds changed pages.", "responses": {"200": {"description": "Bounded scan report", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ScanReport"}}}}, "502": {"$ref": "#/components/responses/Error"}}}
+    },
+    "/v1/sources/{id}/ingest": {
+      "parameters": [{"$ref": "#/components/parameters/TenantHeader"}, {"$ref": "#/components/parameters/PathId"}],
+      "post": {"operationId": "ingestSourcePage", "description": "Trusted-connector HTML ingestion with source-domain enforcement.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/IngestPageRequest"}}}}, "responses": {"200": {"description": "Unchanged no-op"}, "201": {"description": "Page revision created"}, "403": {"$ref": "#/components/responses/Error"}}}
+    },
+    "/v1/pages": {
+      "parameters": [{"$ref": "#/components/parameters/TenantHeader"}],
+      "get": {"operationId": "listIndexedPages", "responses": {"200": {"description": "Latest page revisions without raw vector payloads"}}}
+    },
+    "/v1/embeddings/search": {
+      "parameters": [{"$ref": "#/components/parameters/TenantHeader"}],
+      "post": {"operationId": "semanticSearch", "description": "Embeds full query text plus keyword and proper-noun views, rejects silent cross-model comparison, and returns explainable hybrid scores. Optional alert_rule data creates candidates but never sends notifications.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SemanticSearchRequest"}}}}, "responses": {"200": {"description": "Stable bounded results"}, "409": {"$ref": "#/components/responses/Error"}, "503": {"$ref": "#/components/responses/Error"}}}
+    },
+    "/v1/matches": {
+      "parameters": [{"$ref": "#/components/parameters/TenantHeader"}],
+      "get": {"operationId": "listMatchCandidates", "description": "Candidates awaiting DEN-3460 delivery policy.", "responses": {"200": {"description": "Deduplicated candidates"}}}
+    },
+    "/v1/ws": {"get": {"operationId": "websocketUpgrade", "responses": {"101": {"description": "WebSocket upgrade"}}}}
+  },
+  "components": {
+    "parameters": {
+      "TenantHeader": {"name": "x-eal-tenant-id", "in": "header", "required": false, "description": "Development selector; Shared Auth must replace it before production.", "schema": {"type": "string", "format": "uuid"}},
+      "PathId": {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+    },
+    "responses": {
+      "Error": {"description": "Structured API error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiError"}}}}
+    },
+    "schemas": {
+      "ApiError": {"type": "object", "required": ["error"], "properties": {"error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}}},
+      "DiscoveryMode": {"type": "string", "enum": ["seed", "robots_sitemap", "sitemap", "rss", "link_crawl", "external_index"]},
+      "CreateSourceDomain": {"type": "object", "required": ["name", "domain"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 120}, "domain": {"type": "string"}, "include_subdomains": {"type": "boolean", "default": false}, "seed_urls": {"type": "array", "maxItems": 50, "items": {"type": "string", "format": "uri"}}, "discovery_modes": {"type": "array", "items": {"$ref": "#/components/schemas/DiscoveryMode"}}, "max_pages_per_scan": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25}, "source_priority": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5}, "respect_robots": {"type": "boolean", "default": true}, "enabled": {"type": "boolean", "default": true}}},
+      "SourceDomain": {"allOf": [{"$ref": "#/components/schemas/CreateSourceDomain"}, {"type": "object", "required": ["id", "tenant_id", "base_url", "host"], "properties": {"id": {"type": "string", "format": "uuid"}, "tenant_id": {"type": "string", "format": "uuid"}, "base_url": {"type": "string", "format": "uri"}, "host": {"type": "string"}}}]},
+      "EmbeddingModelRef": {"type": "object", "required": ["provider", "model", "version", "dimensions", "normalization"], "properties": {"provider": {"type": "string"}, "model": {"type": "string"}, "version": {"type": "string"}, "dimensions": {"type": "integer", "minimum": 8, "maximum": 16384}, "normalization": {"type": "string", "const": "l2"}}},
+      "IngestPageRequest": {"type": "object", "required": ["url", "html"], "properties": {"url": {"type": "string", "format": "uri"}, "html": {"type": "string"}, "content_type": {"type": ["string", "null"]}, "etag": {"type": ["string", "null"]}, "last_modified": {"type": ["string", "null"]}}},
+      "ScanReport": {"type": "object", "required": ["source_id", "discovered_urls", "attempted", "created", "updated", "unchanged", "rejected_by_robots", "failed", "embedding_model", "extractor_version"], "properties": {"source_id": {"type": "string", "format": "uuid"}, "discovered_urls": {"type": "integer"}, "attempted": {"type": "integer"}, "created": {"type": "integer"}, "updated": {"type": "integer"}, "unchanged": {"type": "integer"}, "rejected_by_robots": {"type": "integer"}, "failed": {"type": "integer"}, "embedding_model": {"$ref": "#/components/schemas/EmbeddingModelRef"}, "extractor_version": {"type": "string"}}},
+      "AlertRuleRevisionRef": {"type": "object", "required": ["id", "revision"], "properties": {"id": {"type": "string", "format": "uuid"}, "revision": {"type": "integer", "minimum": 1}}},
+      "SemanticSearchRequest": {"type": "object", "required": ["query_text"], "properties": {"query_text": {"type": "string", "minLength": 3, "maxLength": 2000}, "source_ids": {"type": "array", "maxItems": 100, "items": {"type": "string", "format": "uuid"}}, "threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.72}, "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}, "cursor": {"type": ["string", "null"], "format": "uuid"}, "expected_model": {"oneOf": [{"$ref": "#/components/schemas/EmbeddingModelRef"}, {"type": "null"}]}, "alert_rule": {"oneOf": [{"$ref": "#/components/schemas/AlertRuleRevisionRef"}, {"type": "null"}]}}}
+    }
+  }
+}
