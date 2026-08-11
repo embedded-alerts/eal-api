@@ -20,7 +20,11 @@ struct ErrorBody {
 
 impl HttpError {
     pub fn validation(error: impl std::fmt::Display) -> Self {
-        Self::new(StatusCode::UNPROCESSABLE_ENTITY, "validation_error", error)
+        Self::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_error",
+            error.to_string(),
+        )
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {
