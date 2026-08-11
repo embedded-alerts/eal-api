@@ -179,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
         .transpose()
         .context("parse DEFAULT_TENANT_ID")?
         .unwrap_or_else(|| Uuid::from_u128(1));
-    let openapi: serde_json::Value =
+    let openapi_document: serde_json::Value =
         serde_json::from_str(OPENAPI_DOCUMENT).context("parse bundled OpenAPI document")?;
 
     let (events, _) = broadcast::channel(512);
@@ -191,7 +191,7 @@ async fn main() -> anyhow::Result<()> {
         supabase_url: env::var("SUPABASE_URL").ok(),
         semantic,
         default_tenant_id,
-        openapi: Arc::new(openapi),
+        openapi: Arc::new(openapi_document),
     };
 
     warn!(
