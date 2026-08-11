@@ -2,56 +2,64 @@
 
 **Embedded Alerts — Rust REST and WebSocket API server**
 
-Embedding-native monitoring and alerting that continuously matches user intents against newly ingested documents, feeds, pages, and streams.
+Embedded Alerts indexes newly published public pages from explicitly configured domains,
+stores model-versioned vectors per page revision, and creates explainable match candidates
+for registered users. It does not use Next.js.
 
-This repository was bootstrapped on 2026-08-04. It is designed as an independently deployable component and as a member of the `eal-monorepo` workspace.
+## Indexing strategy
 
-## GitHub target
+The authoritative index is owned by Embedded Alerts and restricted by tenant-owned source
+policies. RSS/Atom feeds, sitemaps, manual submissions, and external search indexes may
+suggest candidate URLs. A candidate is never trusted as a match: it must still pass exact
+host/path policy, redirect revalidation, robots policy in the crawler, canonicalization,
+content hashing, local embedding generation, and tenant-scoped semantic scoring.
 
-`embedded-alerts/eal-api`
+This repository owns the API and durable PostgreSQL/pgvector state. The crawler is a
+separate Rust worker so fetch concurrency, DNS rebinding checks, per-host budgets, retry
+leases, and content extraction cannot block request-serving tasks.
 
-## Baseline
+## Routes
 
-- Rust 2024 edition for backend and native components.
-- Axum HTTP/WebSocket transport.
-- Supabase/PostgreSQL configuration through `DATABASE_URL`, `SUPABASE_URL`, and environment-only secrets.
-- OpenTelemetry-compatible tracing hooks.
-- Docker, Nix, and GitHub Actions entry points.
-- Contracts live in `eal-interfaces`; shared behavior lives in `eal-libs`.
+All non-health routes currently require `X-Eal-Tenant-Id: <uuid>`. This is a development
+compatibility boundary only; Shared Auth claims must replace it before production.
 
-### Routes
+- `GET|POST /v1/alerts`
+- `GET /v1/alerts/{id}`
+- `GET|POST /v1/sources`
+- `GET /v1/sources/{source_id}`
+- `POST /v1/sources/{source_id}/pages`
+- `POST /v1/embeddings/search`
+- `POST /v1/matches/evaluate`
+- `GET /v1/ws`
 
-- `/v1/alerts`
-- `/v1/matches`
-- `/v1/sources`
-- `/v1/embeddings/search`
-- `/v1/ws`
+`/v1/matches/evaluate` creates deterministic candidates only. It never sends a webhook,
+email, Slack message, or other notification. DEN-3460 owns cooldowns, grouping, approvals,
+retry schedules, provider receipts, and dead-letter replay.
+
+## Database
+
+`migrations/002_domain_scoped_indexing.sql` adds tenant-owned sources, crawl leases, pages,
+immutable content revisions, model/version/dimension/normalization-specific embeddings,
+and match candidates. It leaves the legacy `alert_documents` prototype untouched.
+
+Set `MIGRATE_ON_STARTUP=true` only for controlled development. Production should run the
+same SQL through the deployment migration job before rolling the API.
 
 ## Runtime safety boundary
 
-Alert rule handlers currently use a process-local `HashMap`; a configured PostgreSQL
-connection does not make those handlers durable. To prevent an accidental production
-deployment from presenting that scaffold as a real alert service, startup now fails
-when `APP_ENV` is `production` or `prod`.
+Alert-rule CRUD still uses a process-local map. Startup therefore fails for
+`APP_ENV=production` or `APP_ENV=prod`, even when PostgreSQL is connected. The health route
+reports `production_ready=false` until DEN-3459 adds durable alert-rule storage and Shared
+Auth tenant authorization.
 
-Use `APP_ENV=development` or `APP_ENV=test` only for scaffold work. `/healthz` reports
-`status=degraded`, `storage_mode=process_local_memory`, and
-`production_ready=false` until DEN-3459 replaces the handlers with tenant-owned
-SeaORM/PostgreSQL persistence.
-
-Removing this guard is not the completion condition. Production enablement also
-requires Shared Auth claim validation, tenant-scoped HTTP and WebSocket authorization,
-explicit CORS origins, durable migrations, and restart/isolation canaries.
+Production enablement additionally requires crawler SSRF/DNS-rebinding canaries, explicit
+registered-client claims, restart/isolation tests, and DEN-3460 delivery-state certification.
 
 ## Development
 
 ```bash
-cp .env.example .env 2>/dev/null || true
-nix develop  # optional
-cargo fmt --check 2>/dev/null || true
-cargo test 2>/dev/null || true
+cp .env.example .env
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
 ```
-
-## Status
-
-Foundation scaffold. Domain behavior, persistence migrations, authentication policy, and production secrets must be reviewed before deployment.
