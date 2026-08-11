@@ -88,10 +88,10 @@ impl Crawler {
         let mut urls = BTreeSet::new();
         if source.has_mode(DiscoveryMode::Seed) {
             for seed in &source.seed_urls {
-                if let Ok(seed) = Url::parse(seed) {
-                    if let Ok(seed) = source.canonicalize_url(&seed) {
-                        urls.insert(seed.to_string());
-                    }
+                if let Ok(seed) = Url::parse(seed)
+                    && let Ok(seed) = source.canonicalize_url(&seed)
+                {
+                    urls.insert(seed.to_string());
                 }
             }
         }
@@ -274,13 +274,13 @@ impl Crawler {
                 .await
                 .map_err(|error| SemanticError::fetch(format!("GET {current}: {error}")))?;
 
-            if let Some(remote_addr) = response.remote_addr() {
-                if !is_public_ip(remote_addr.ip()) {
-                    return Err(SemanticError::forbidden(
-                        "private_network",
-                        "remote server resolved to a non-public address",
-                    ));
-                }
+            if let Some(remote_addr) = response.remote_addr()
+                && !is_public_ip(remote_addr.ip())
+            {
+                return Err(SemanticError::forbidden(
+                    "private_network",
+                    "remote server resolved to a non-public address",
+                ));
             }
 
             if response.status().is_redirection() {

@@ -53,49 +53,48 @@ impl SemanticService {
         let content_hash = sha256_hex(extracted.visible_text.as_bytes());
         let key = (source.tenant_id, source.id, canonical_url.clone());
 
-        if let Some(existing) = self.latest_page(&key).await {
-            if existing.content_hash == content_hash {
-                if existing.model != *self.embedder.model() {
-                    return Err(SemanticError::conflict(
-                        "model_migration_required",
-                        "content is unchanged but the active embedding model changed; use the audited model migration workflow from DEN-3462",
-                    ));
-                }
-                return Ok(IngestOutcome {
-                    disposition: IngestDisposition::Unchanged,
-                    page_revision_id: existing.id,
-                    previous_revision_id: existing.previous_revision_id,
-                    canonical_url,
-                    content_hash,
-                    segment_count: existing.segments.len(),
-                    model: existing.model,
-                });
+        if let Some(existing) = self.latest_page(&key).await
+            && existing.content_hash == content_hash
+        {
+            if existing.model != *self.embedder.model() {
+                return Err(SemanticError::conflict(
+                    "model_migration_required",
+                    "content is unchanged but the active embedding model changed; use the audited model migration workflow from DEN-3462",
+                ));
             }
+            return Ok(IngestOutcome {
+                disposition: IngestDisposition::Unchanged,
+                page_revision_id: existing.id,
+                previous_revision_id: existing.previous_revision_id,
+                canonical_url,
+                content_hash,
+                segment_count: existing.segments.len(),
+                model: existing.model,
+            });
         }
 
         let segments = self.embedder.embed_segments(&extracted.segments).await?;
         let mut store = self.store.write().await;
         let previous_revision_id = store.latest_pages.get(&key).copied();
-        if let Some(previous_id) = previous_revision_id {
-            if let Some(previous) = store.pages.get(&previous_id) {
-                if previous.content_hash == content_hash {
-                    if previous.model != *self.embedder.model() {
-                        return Err(SemanticError::conflict(
-                            "model_migration_required",
-                            "content is unchanged but the active embedding model changed; use the audited model migration workflow from DEN-3462",
-                        ));
-                    }
-                    return Ok(IngestOutcome {
-                        disposition: IngestDisposition::Unchanged,
-                        page_revision_id: previous.id,
-                        previous_revision_id: previous.previous_revision_id,
-                        canonical_url,
-                        content_hash,
-                        segment_count: previous.segments.len(),
-                        model: previous.model.clone(),
-                    });
-                }
+        if let Some(previous_id) = previous_revision_id
+            && let Some(previous) = store.pages.get(&previous_id)
+            && previous.content_hash == content_hash
+        {
+            if previous.model != *self.embedder.model() {
+                return Err(SemanticError::conflict(
+                    "model_migration_required",
+                    "content is unchanged but the active embedding model changed; use the audited model migration workflow from DEN-3462",
+                ));
             }
+            return Ok(IngestOutcome {
+                disposition: IngestDisposition::Unchanged,
+                page_revision_id: previous.id,
+                previous_revision_id: previous.previous_revision_id,
+                canonical_url,
+                content_hash,
+                segment_count: previous.segments.len(),
+                model: previous.model.clone(),
+            });
         }
 
         let revision = PageRevision {

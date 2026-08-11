@@ -52,10 +52,10 @@ impl RobotsPolicy {
                     }
                 }
                 "sitemap" => {
-                    if let Ok(url) = robots_url.join(value) {
-                        if matches!(url.scheme(), "http" | "https") {
-                            sitemaps.insert(url.to_string());
-                        }
+                    if let Ok(url) = robots_url.join(value)
+                        && matches!(url.scheme(), "http" | "https")
+                    {
+                        sitemaps.insert(url.to_string());
                     }
                 }
                 _ => {}

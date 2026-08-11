@@ -98,17 +98,17 @@ impl SemanticService {
     ) -> Result<SemanticSearchResponse, SemanticError> {
         validate_search_request(&request)?;
         let query = query_segments(&request.query_text)?;
-        if let Some(expected_model) = &request.expected_model {
-            if expected_model != self.embedder.model() {
-                return Err(SemanticError::conflict(
-                    "embedding_model",
-                    format!(
-                        "requested model {} does not match active model {}",
-                        expected_model.fingerprint(),
-                        self.embedder.model().fingerprint()
-                    ),
-                ));
-            }
+        if let Some(expected_model) = &request.expected_model
+            && expected_model != self.embedder.model()
+        {
+            return Err(SemanticError::conflict(
+                "embedding_model",
+                format!(
+                    "requested model {} does not match active model {}",
+                    expected_model.fingerprint(),
+                    self.embedder.model().fingerprint()
+                ),
+            ));
         }
         let query_embeddings = self.embedder.embed_segments(&query.segments).await?;
 
@@ -207,5 +207,4 @@ impl SemanticService {
             candidate_matches_created,
         })
     }
-
 }

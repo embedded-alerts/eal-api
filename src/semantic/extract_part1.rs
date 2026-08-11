@@ -158,7 +158,6 @@ pub(crate) fn query_segments(query: &str) -> Result<QueryAnalysis, SemanticError
     Ok(QueryAnalysis {
         text: query,
         tokens,
-        keywords,
         entities,
         segments,
     })
@@ -168,7 +167,6 @@ pub(crate) fn query_segments(query: &str) -> Result<QueryAnalysis, SemanticError
 pub(crate) struct QueryAnalysis {
     pub text: String,
     pub tokens: BTreeSet<String>,
-    pub keywords: Vec<String>,
     pub entities: Vec<String>,
     pub segments: Vec<TextSegment>,
 }
