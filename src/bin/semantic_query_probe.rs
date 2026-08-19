@@ -3,12 +3,9 @@
 //! This binary certifies query decomposition and the configured embedding provider
 //! without exposing raw vectors or creating delivery side effects.
 
-#[path = "../query_embedding.rs"]
-mod query_embedding;
-
+use eal_api::query_embedding::QueryEmbeddingService;
 use eal_interfaces::EmbeddingSpaceConfig;
 use eal_query::analyze_query;
-use query_embedding::QueryEmbeddingService;
 use serde_json::json;
 use std::{env, error::Error};
 

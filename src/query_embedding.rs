@@ -220,16 +220,16 @@ fn validate_provider_model(
     returned_model: Option<&str>,
     configured_model: &str,
 ) -> Result<(), QueryEmbeddingError> {
-    if let Some(returned_model) = returned_model {
-        if returned_model != configured_model {
-            return Err(QueryEmbeddingError::new(
-                "embedding_model_mismatch",
-                format!(
-                    "embedding provider returned model {returned_model:?}; expected {configured_model:?}"
-                ),
-                false,
-            ));
-        }
+    if let Some(returned_model) = returned_model
+        && returned_model != configured_model
+    {
+        return Err(QueryEmbeddingError::new(
+            "embedding_model_mismatch",
+            format!(
+                "embedding provider returned model {returned_model:?}; expected {configured_model:?}"
+            ),
+            false,
+        ));
     }
     Ok(())
 }
