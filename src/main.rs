@@ -2,6 +2,7 @@ mod error;
 mod indexing;
 mod store;
 mod tenant;
+mod worker_auth;
 
 use std::{collections::HashMap, env, sync::Arc};
 
@@ -13,7 +14,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{
-        HeaderName, HeaderValue, Method, StatusCode,
+        HeaderMap, HeaderName, HeaderValue, Method, StatusCode,
         header::{AUTHORIZATION, CONTENT_TYPE},
     },
     response::IntoResponse,
@@ -67,10 +68,18 @@ impl AppEnvironment {
     }
 }
 
-fn validate_startup_policy(environment: AppEnvironment) -> Result<(), &'static str> {
+fn validate_startup_policy(
+    environment: AppEnvironment,
+    allow_insecure_tenant_header: bool,
+) -> Result<(), &'static str> {
     if environment == AppEnvironment::Production {
         return Err(
             "production startup blocked: alert rules are still stored only in process memory; implement the durable tenant repository in DEN-3459 before deployment",
+        );
+    }
+    if !allow_insecure_tenant_header {
+        return Err(
+            "startup blocked: X-Eal-Tenant-Id is not authentication; set ALLOW_INSECURE_TENANT_HEADER=true only in an isolated development or test environment",
         );
     }
     Ok(())
@@ -146,7 +155,9 @@ async fn main() -> anyhow::Result<()> {
 
     let app_env = env::var("APP_ENV").ok();
     let environment = AppEnvironment::parse(app_env.as_deref()).map_err(anyhow::Error::msg)?;
-    validate_startup_policy(environment).map_err(anyhow::Error::msg)?;
+    let allow_insecure_tenant_header = env_flag("ALLOW_INSECURE_TENANT_HEADER");
+    validate_startup_policy(environment, allow_insecure_tenant_header)
+        .map_err(anyhow::Error::msg)?;
 
     let db = match env::var("DATABASE_URL") {
         Ok(url) if !url.trim().is_empty() => {
@@ -175,6 +186,7 @@ async fn main() -> anyhow::Result<()> {
     warn!(
         environment = state.environment.as_str(),
         database_connected = state.db.is_some(),
+        insecure_tenant_header_enabled = allow_insecure_tenant_header,
         "alert rules remain process-local; production startup is disabled"
     );
 
@@ -193,7 +205,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
+    let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port = env::var("PORT").unwrap_or_else(|_| "8080".into());
     let listener = tokio::net::TcpListener::bind(format!("{host}:{port}")).await?;
     info!(address = %listener.local_addr()?, "Embedded Alerts API listening");
@@ -217,7 +229,7 @@ async fn health(State(state): State<AppState>) -> Json<Health> {
         production_ready: false,
         database_connected: state.db.is_some(),
         supabase_configured: state.supabase_url.is_some(),
-        tenant_context: "development_header_until_shared_auth",
+        tenant_context: "explicit_insecure_header_until_shared_auth",
     })
 }
 
@@ -335,8 +347,10 @@ async fn ingest_page(
     TenantId(tenant_id): TenantId,
     Path(source_id): Path<Uuid>,
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(input): Json<PageIngestRequest>,
 ) -> Result<(StatusCode, Json<PageRevision>), HttpError> {
+    worker_auth::authorize(&headers)?;
     input.validate().map_err(HttpError::validation)?;
     if input.source_id != source_id {
         return Err(HttpError::bad_request(
@@ -552,14 +566,21 @@ mod tests {
 
     #[test]
     fn blocks_production_while_rule_storage_is_process_local() {
-        let error = validate_startup_policy(AppEnvironment::Production)
+        let error = validate_startup_policy(AppEnvironment::Production, true)
             .expect_err("production must remain blocked");
         assert!(error.contains("process memory"));
     }
 
     #[test]
-    fn permits_development_and_test_for_scaffold_work() {
-        assert!(validate_startup_policy(AppEnvironment::Development).is_ok());
-        assert!(validate_startup_policy(AppEnvironment::Test).is_ok());
+    fn requires_explicit_insecure_tenant_header_opt_in() {
+        let error = validate_startup_policy(AppEnvironment::Development, false)
+            .expect_err("development tenant-header compatibility must be explicit");
+        assert!(error.contains("ALLOW_INSECURE_TENANT_HEADER"));
+    }
+
+    #[test]
+    fn permits_explicit_development_and_test_scaffolds() {
+        assert!(validate_startup_policy(AppEnvironment::Development, true).is_ok());
+        assert!(validate_startup_policy(AppEnvironment::Test, true).is_ok());
     }
 }

@@ -51,6 +51,14 @@ impl HttpError {
         )
     }
 
+    pub fn ingest_auth_required() -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "ingest_auth_required",
+            "page ingestion is disabled until crawler authentication is configured",
+        )
+    }
+
     pub fn internal(error: impl std::fmt::Display) -> Self {
         tracing::error!(error = %error, "request failed");
         Self::new(
