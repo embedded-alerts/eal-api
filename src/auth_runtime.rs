@@ -295,15 +295,15 @@ impl JwtVerifier {
         if expiration <= now.saturating_sub(self.leeway_seconds) {
             return Err(());
         }
-        if let Some(not_before) = claims_object.get("nbf") {
-            if integer_claim(not_before)? > now.saturating_add(self.leeway_seconds) {
-                return Err(());
-            }
+        if let Some(not_before) = claims_object.get("nbf")
+            && integer_claim(not_before)? > now.saturating_add(self.leeway_seconds)
+        {
+            return Err(());
         }
-        if let Some(issued_at) = claims_object.get("iat") {
-            if integer_claim(issued_at)? > now.saturating_add(self.leeway_seconds) {
-                return Err(());
-            }
+        if let Some(issued_at) = claims_object.get("iat")
+            && integer_claim(issued_at)? > now.saturating_add(self.leeway_seconds)
+        {
+            return Err(());
         }
 
         let tenant = claim_at_path(&claims, &self.tenant_claim_path)
