@@ -35,6 +35,10 @@ impl HttpError {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message.into())
     }
 
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, "forbidden", message.into())
+    }
+
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_FOUND, "not_found", message.into())
     }

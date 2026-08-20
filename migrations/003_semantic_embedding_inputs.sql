@@ -56,9 +56,7 @@ CREATE TABLE IF NOT EXISTS eal_semantic_inputs (
     input_text_sha256 TEXT NOT NULL CHECK (
         input_text_sha256 ~ '^[0-9a-f]{64}$'
     ),
-    weight REAL NOT NULL CHECK (
-        isfinite(weight) AND weight BETWEEN 0.1 AND 2.0
-    ),
+    weight REAL NOT NULL CHECK (weight BETWEEN 0.1 AND 2.0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (input_set_id, ordinal),
     UNIQUE (input_set_id, kind, input_text_sha256)

@@ -8,6 +8,10 @@ const INGEST_TOKEN_DIGEST_ENV: &str = "EAL_INGEST_TOKEN_SHA256";
 const MIN_TOKEN_BYTES: usize = 32;
 const MAX_TOKEN_BYTES: usize = 512;
 
+pub fn is_configured() -> bool {
+    configured_digest().is_ok()
+}
+
 pub fn authorize(headers: &HeaderMap) -> Result<(), HttpError> {
     let expected = configured_digest().map_err(|_| HttpError::ingest_auth_required())?;
     let token = headers
