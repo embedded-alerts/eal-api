@@ -66,9 +66,9 @@ impl QueryEmbeddingService {
             ));
         }
         for input in inputs {
-            input.validate().map_err(|error| {
-                QueryEmbeddingError::new(error.code, error.message, false)
-            })?;
+            input
+                .validate()
+                .map_err(|error| QueryEmbeddingError::new(error.code, error.message, false))?;
         }
 
         let payload = ProviderRequest {
@@ -202,10 +202,7 @@ fn validate_endpoint(endpoint: &Url, environment: &str) -> Result<(), QueryEmbed
     let secure = endpoint.scheme() == "https";
     let development_loopback = environment != "production"
         && endpoint.scheme() == "http"
-        && matches!(
-            endpoint.host_str(),
-            Some("localhost" | "127.0.0.1" | "::1")
-        );
+        && matches!(endpoint.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
     if !secure && !development_loopback {
         return Err(QueryEmbeddingError::new(
             "insecure_embedding_endpoint",

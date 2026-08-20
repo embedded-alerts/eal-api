@@ -1,6 +1,4 @@
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 
 const INDEXING_MIGRATION: &str = include_str!("../migrations/002_domain_scoped_indexing.sql");
 const SEMANTIC_INPUT_MIGRATION: &str =
@@ -19,9 +17,7 @@ pub async fn migrate_all(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> 
     transaction
         .execute_unprepared(SEMANTIC_INPUT_MIGRATION)
         .await?;
-    transaction
-        .execute_unprepared(ALERT_RULE_MIGRATION)
-        .await?;
+    transaction.execute_unprepared(ALERT_RULE_MIGRATION).await?;
     transaction.commit().await?;
     Ok(())
 }

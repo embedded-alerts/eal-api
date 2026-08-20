@@ -1,7 +1,5 @@
 use eal_api::{alert_store, alerts::CreateAlertRule, migrations};
-use sea_orm::{
-    ConnectionTrait, Database, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait};
 use uuid::Uuid;
 
 fn input(name: &str) -> CreateAlertRule {
@@ -105,30 +103,18 @@ async fn alert_rules_survive_restart_and_enforce_tenant_owner_boundaries() {
         .expect("connect through non-superuser application role");
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
-    let owned = alert_store::create_alert_rule(
-        &database,
-        tenant_a,
-        "user-a",
-        &input("Owned by user A"),
-    )
-    .await
-    .expect("create first alert rule");
-    let other_owner = alert_store::create_alert_rule(
-        &database,
-        tenant_a,
-        "user-b",
-        &input("Owned by user B"),
-    )
-    .await
-    .expect("create second alert rule");
-    let other_tenant = alert_store::create_alert_rule(
-        &database,
-        tenant_b,
-        "user-a",
-        &input("Different tenant"),
-    )
-    .await
-    .expect("create cross-tenant alert rule");
+    let owned =
+        alert_store::create_alert_rule(&database, tenant_a, "user-a", &input("Owned by user A"))
+            .await
+            .expect("create first alert rule");
+    let other_owner =
+        alert_store::create_alert_rule(&database, tenant_a, "user-b", &input("Owned by user B"))
+            .await
+            .expect("create second alert rule");
+    let other_tenant =
+        alert_store::create_alert_rule(&database, tenant_b, "user-a", &input("Different tenant"))
+            .await
+            .expect("create cross-tenant alert rule");
 
     drop(database);
     let restarted = Database::connect(&app_database_url)

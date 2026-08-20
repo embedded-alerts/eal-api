@@ -51,7 +51,9 @@ fn token_matches(expected: &[u8; 32], token: &HeaderValue) -> bool {
 fn fixed_time_eq(left: &[u8; 32], right: &[u8; 32]) -> bool {
     left.iter()
         .zip(right)
-        .fold(0_u8, |difference, (left, right)| difference | (left ^ right))
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (left ^ right)
+        })
         == 0
 }
 

@@ -1,6 +1,6 @@
 use eal_semantic_contracts::{
-    EmbeddingInput, EmbeddingInputKind, QueryTextViews, MAX_EMBEDDING_INPUT_CHARS,
-    MAX_EMBEDDING_INPUTS,
+    EmbeddingInput, EmbeddingInputKind, MAX_EMBEDDING_INPUT_CHARS, MAX_EMBEDDING_INPUTS,
+    QueryTextViews,
 };
 use std::{collections::BTreeSet, error::Error, fmt};
 
@@ -74,9 +74,9 @@ pub fn analyze_query(value: &str) -> Result<QueryTextViews, QueryAnalysisError> 
         entities,
         embedding_inputs,
     };
-    views.validate().map_err(|error| {
-        QueryAnalysisError::new(error.code, error.message)
-    })?;
+    views
+        .validate()
+        .map_err(|error| QueryAnalysisError::new(error.code, error.message))?;
     Ok(views)
 }
 
@@ -138,8 +138,8 @@ fn extract_entities(query: &str) -> Vec<String> {
 
     for (index, word) in words.iter().enumerate() {
         let normalized = word.to_ascii_lowercase();
-        let candidate = is_probable_entity_word(word)
-            && !(index == 0 && is_instruction_word(&normalized));
+        let candidate =
+            is_probable_entity_word(word) && !(index == 0 && is_instruction_word(&normalized));
         if candidate {
             current.push(word.clone());
         } else {
@@ -154,11 +154,7 @@ fn extract_entities(query: &str) -> Vec<String> {
     output
 }
 
-fn flush_entity(
-    current: &mut Vec<String>,
-    seen: &mut BTreeSet<String>,
-    output: &mut Vec<String>,
-) {
+fn flush_entity(current: &mut Vec<String>, seen: &mut BTreeSet<String>, output: &mut Vec<String>) {
     if current.is_empty() || output.len() >= MAX_ENTITIES {
         current.clear();
         return;
@@ -188,7 +184,9 @@ fn raw_tokens(value: &str) -> Vec<String> {
 
 fn clean_token(value: &str) -> String {
     value
-        .trim_matches(|character: char| !character.is_alphanumeric() && character != '-' && character != '_')
+        .trim_matches(|character: char| {
+            !character.is_alphanumeric() && character != '-' && character != '_'
+        })
         .to_owned()
 }
 
@@ -264,8 +262,7 @@ mod tests {
 
     #[test]
     fn preserves_complete_query_and_companion_views() {
-        let query =
-            "Notify me when Acme Corporation launches renewable energy tools in Colombia.";
+        let query = "Notify me when Acme Corporation launches renewable energy tools in Colombia.";
         let views = analyze_query(query).unwrap();
         assert_eq!(views.embedding_inputs[0].kind, EmbeddingInputKind::Query);
         assert_eq!(views.embedding_inputs[0].text, query);

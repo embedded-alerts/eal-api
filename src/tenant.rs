@@ -18,8 +18,7 @@ pub fn tenant_id_from_headers(headers: &HeaderMap) -> Result<Uuid, HttpError> {
     let value = value
         .to_str()
         .map_err(|_| HttpError::unauthorized("invalid X-Eal-Tenant-Id header"))?;
-    Uuid::parse_str(value)
-        .map_err(|_| HttpError::unauthorized("X-Eal-Tenant-Id must be a UUID"))
+    Uuid::parse_str(value).map_err(|_| HttpError::unauthorized("X-Eal-Tenant-Id must be a UUID"))
 }
 
 impl<S> FromRequestParts<S> for TenantId
@@ -28,10 +27,7 @@ where
 {
     type Rejection = HttpError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         tenant_id_from_headers(&parts.headers).map(Self)
     }
 }
