@@ -95,72 +95,67 @@ pub async fn create_alert_rule(
     let delivery_channels = serde_json::to_string(&input.delivery_channels)?;
     let transaction = db.begin().await?;
     set_request_context(&transaction, tenant_id, subject, false).await?;
-    let row = transaction
-        .query_one_raw(statement(
-            format!(
-                r#"
-                WITH inserted_rule AS (
-                    INSERT INTO eal_alert_rules (
-                        id,
-                        tenant_id,
-                        owner_subject
-                    )
-                    VALUES ($1::uuid, $2::uuid, $3)
-                    RETURNING *
-                ),
-                inserted_revision AS (
-                    INSERT INTO eal_alert_rule_revisions (
-                        id,
-                        tenant_id,
-                        alert_rule_id,
-                        revision_number,
-                        created_by_subject,
-                        name,
-                        query_text,
-                        embedding_model,
-                        similarity_threshold,
-                        source_filters,
-                        delivery_channels,
-                        enabled
-                    )
-                    SELECT
-                        $4::uuid,
-                        rule.tenant_id,
-                        rule.id,
-                        1,
-                        $3,
-                        $5,
-                        $6,
-                        $7,
-                        $8::real,
-                        $9::jsonb,
-                        $10::jsonb,
-                        $11
-                    FROM inserted_rule AS rule
-                    RETURNING *
-                ),
-                activated_rule AS (
-                    UPDATE eal_alert_rules AS rule
-                    SET
-                        active_revision_id = revision.id,
-                        updated_at = now()
-                    FROM inserted_revision AS revision
-                    WHERE rule.id = $1::uuid
-                      AND rule.tenant_id = $2::uuid
-                    RETURNING rule.*
-                )
-                SELECT {} AS data
-                FROM activated_rule AS rule
-                JOIN inserted_revision AS revision
-                  ON revision.id = rule.active_revision_id
-                "#,
-                alert_rule_json("rule", "revision")
-            ),
+
+    let inserted_rule = transaction
+        .execute_raw(statement(
+            r#"
+            INSERT INTO eal_alert_rules (
+                id,
+                tenant_id,
+                owner_subject
+            )
+            VALUES ($1::uuid, $2::uuid, $3)
+            "#,
             vec![
                 rule_id.to_string().into(),
                 tenant_id.to_string().into(),
                 subject.to_owned().into(),
+            ],
+        ))
+        .await?;
+    if inserted_rule.rows_affected() != 1 {
+        return Err(HttpError::internal(
+            "alert-rule identity insert did not affect exactly one row",
+        ));
+    }
+
+    let inserted_revision = transaction
+        .execute_raw(statement(
+            r#"
+            INSERT INTO eal_alert_rule_revisions (
+                id,
+                tenant_id,
+                alert_rule_id,
+                revision_number,
+                created_by_subject,
+                name,
+                query_text,
+                embedding_model,
+                similarity_threshold,
+                source_filters,
+                delivery_channels,
+                enabled
+            )
+            VALUES (
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                1,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8::real,
+                $9::jsonb,
+                $10::jsonb,
+                $11
+            )
+            "#,
+            vec![
                 revision_id.to_string().into(),
+                tenant_id.to_string().into(),
+                rule_id.to_string().into(),
+                subject.to_owned().into(),
                 input.name.clone().into(),
                 input.query_text.clone().into(),
                 input.embedding_model.clone().into(),
@@ -169,6 +164,52 @@ pub async fn create_alert_rule(
                 delivery_channels.into(),
                 input.enabled.into(),
             ],
+        ))
+        .await?;
+    if inserted_revision.rows_affected() != 1 {
+        return Err(HttpError::internal(
+            "alert-rule revision insert did not affect exactly one row",
+        ));
+    }
+
+    let activated_rule = transaction
+        .execute_raw(statement(
+            r#"
+            UPDATE eal_alert_rules
+            SET
+                active_revision_id = $3::uuid,
+                updated_at = now()
+            WHERE id = $1::uuid
+              AND tenant_id = $2::uuid
+            "#,
+            vec![
+                rule_id.to_string().into(),
+                tenant_id.to_string().into(),
+                revision_id.to_string().into(),
+            ],
+        ))
+        .await?;
+    if activated_rule.rows_affected() != 1 {
+        return Err(HttpError::internal(
+            "alert-rule activation did not affect exactly one row",
+        ));
+    }
+
+    let row = transaction
+        .query_one_raw(statement(
+            format!(
+                r#"
+                SELECT {} AS data
+                FROM eal_alert_rules AS rule
+                JOIN eal_alert_rule_revisions AS revision
+                  ON revision.id = rule.active_revision_id
+                 AND revision.tenant_id = rule.tenant_id
+                WHERE rule.id = $1::uuid
+                  AND rule.tenant_id = $2::uuid
+                "#,
+                alert_rule_json("rule", "revision")
+            ),
+            vec![rule_id.to_string().into(), tenant_id.to_string().into()],
         ))
         .await?;
     let result = row
