@@ -60,7 +60,7 @@ async fn set_context(
         ],
     );
     transaction
-        .execute(&context_statement)
+        .execute_raw(context_statement)
         .await
         .expect("set transaction-local authorization context");
 }
@@ -211,7 +211,7 @@ async fn alert_rules_survive_restart_and_enforce_tenant_owner_boundaries() {
         "UPDATE eal_alert_rule_revisions SET name = 'mutated' WHERE id = $1::uuid",
         vec![owned.revision_id.to_string().into()],
     );
-    let mutation = transaction.execute(&mutation_statement).await;
+    let mutation = transaction.execute_raw(mutation_statement).await;
     assert!(mutation.is_err(), "immutable revisions must reject updates");
     transaction
         .rollback()
