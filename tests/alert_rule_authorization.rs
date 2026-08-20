@@ -45,21 +45,22 @@ async fn set_context(
     subject: &str,
     tenant_admin: bool,
 ) {
+    let context_statement = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        r#"
+        SELECT
+            set_config('app.tenant_id', $1, true),
+            set_config('app.subject', $2, true),
+            set_config('app.is_tenant_admin', $3, true)
+        "#,
+        vec![
+            tenant_id.to_string().into(),
+            subject.to_owned().into(),
+            tenant_admin.to_string().into(),
+        ],
+    );
     transaction
-        .execute(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            r#"
-            SELECT
-                set_config('app.tenant_id', $1, true),
-                set_config('app.subject', $2, true),
-                set_config('app.is_tenant_admin', $3, true)
-            "#,
-            vec![
-                tenant_id.to_string().into(),
-                subject.to_owned().into(),
-                tenant_admin.to_string().into(),
-            ],
-        ))
+        .execute(&context_statement)
         .await
         .expect("set transaction-local authorization context");
 }
@@ -205,13 +206,12 @@ async fn alert_rules_survive_restart_and_enforce_tenant_owner_boundaries() {
 
     let transaction = restarted.begin().await.expect("begin immutability test");
     set_context(&transaction, tenant_a, "user-a", false).await;
-    let mutation = transaction
-        .execute(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "UPDATE eal_alert_rule_revisions SET name = 'mutated' WHERE id = $1::uuid",
-            vec![owned.revision_id.to_string().into()],
-        ))
-        .await;
+    let mutation_statement = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE eal_alert_rule_revisions SET name = 'mutated' WHERE id = $1::uuid",
+        vec![owned.revision_id.to_string().into()],
+    );
+    let mutation = transaction.execute(&mutation_statement).await;
     assert!(mutation.is_err(), "immutable revisions must reject updates");
     transaction
         .rollback()

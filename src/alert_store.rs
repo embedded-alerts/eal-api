@@ -197,21 +197,20 @@ async fn set_request_context(
     subject: &str,
     tenant_admin: bool,
 ) -> Result<(), sea_orm::DbErr> {
-    transaction
-        .execute(statement(
-            r#"
-            SELECT
-                set_config('app.tenant_id', $1, true),
-                set_config('app.subject', $2, true),
-                set_config('app.is_tenant_admin', $3, true)
-            "#,
-            vec![
-                tenant_id.to_string().into(),
-                subject.to_owned().into(),
-                tenant_admin.to_string().into(),
-            ],
-        ))
-        .await?;
+    let context_statement = statement(
+        r#"
+        SELECT
+            set_config('app.tenant_id', $1, true),
+            set_config('app.subject', $2, true),
+            set_config('app.is_tenant_admin', $3, true)
+        "#,
+        vec![
+            tenant_id.to_string().into(),
+            subject.to_owned().into(),
+            tenant_admin.to_string().into(),
+        ],
+    );
+    transaction.execute(&context_statement).await?;
     Ok(())
 }
 
