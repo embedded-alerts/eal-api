@@ -210,7 +210,7 @@ async fn set_request_context(
             tenant_admin.to_string().into(),
         ],
     );
-    transaction.execute(&context_statement).await?;
+    transaction.execute_raw(context_statement).await?;
     Ok(())
 }
 
