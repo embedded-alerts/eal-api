@@ -147,6 +147,12 @@ mod tests {
         );
     }
 
+    #[test]
+    fn disabled_alert_rules_fail_closed_before_match_evaluation() {
+        assert!(require_enabled_alert_rule(true).is_ok());
+        assert!(require_enabled_alert_rule(false).is_err());
+    }
+
     fn auth_context(tenant_id: Uuid, subject: &str, role: &str) -> AuthContext {
         let mut headers = HeaderMap::new();
         headers.insert(
