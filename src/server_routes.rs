@@ -156,6 +156,14 @@ async fn search_embeddings(
     ))
 }
 
+fn require_enabled_alert_rule(enabled: bool) -> Result<(), HttpError> {
+    if enabled {
+        Ok(())
+    } else {
+        Err(HttpError::validation("alert rule is disabled"))
+    }
+}
+
 async fn evaluate_matches(
     Authenticated(auth): Authenticated,
     State(state): State<AppState>,
@@ -176,6 +184,7 @@ async fn evaluate_matches(
         auth.is_tenant_admin(),
     )
     .await?;
+    require_enabled_alert_rule(rule.enabled)?;
     if input.search.embedding.model != rule.embedding_model {
         return Err(HttpError::validation(
             "search embedding model must match the active alert-rule revision",
