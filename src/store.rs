@@ -516,6 +516,7 @@ pub async fn evaluate_matches(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     alert_rule_id: Uuid,
+    alert_rule_revision_id: Uuid,
     threshold: f64,
     mut search: EmbeddingSearchRequest,
 ) -> Result<Vec<MatchCandidate>, HttpError> {
@@ -525,18 +526,22 @@ pub async fn evaluate_matches(
 
     for record in page.records {
         let hit = record.hit;
-        let canonical_match_key = match_key(
+        let canonical_match_key = match_key(MatchIdentity {
             tenant_id,
             alert_rule_id,
-            &record.content_sha256,
-            &hit.model,
-            &hit.model_version,
-            hit.dimensions,
-            hit.normalization,
-        );
+            alert_rule_revision_id,
+            page_revision_id: hit.revision_id,
+            content_sha256: &record.content_sha256,
+            model: &hit.model,
+            model_version: &hit.model_version,
+            dimensions: hit.dimensions,
+            normalization: hit.normalization,
+        });
         let explanation = json!({
             "semantic_similarity": hit.similarity,
             "threshold": threshold,
+            "alert_rule_revision_id": alert_rule_revision_id,
+            "page_revision_id": hit.revision_id,
             "model": hit.model,
             "model_version": hit.model_version,
             "dimensions": hit.dimensions,
@@ -547,6 +552,7 @@ pub async fn evaluate_matches(
         let values = vec![
             tenant_id.to_string().into(),
             alert_rule_id.to_string().into(),
+            alert_rule_revision_id.to_string().into(),
             hit.revision_id.to_string().into(),
             hit.embedding_id.to_string().into(),
             canonical_match_key.into(),
@@ -561,6 +567,7 @@ pub async fn evaluate_matches(
                     INSERT INTO eal_match_candidates (
                         tenant_id,
                         alert_rule_id,
+                        alert_rule_revision_id,
                         revision_id,
                         embedding_id,
                         canonical_match_key,
@@ -573,21 +580,33 @@ pub async fn evaluate_matches(
                         $2::uuid,
                         $3::uuid,
                         $4::uuid,
-                        $5,
+                        $5::uuid,
                         $6,
                         $7,
-                        $8::jsonb
+                        $8,
+                        $9::jsonb
                     )
                     ON CONFLICT (tenant_id, canonical_match_key)
-                    DO UPDATE SET
-                        similarity = EXCLUDED.similarity,
-                        threshold = EXCLUDED.threshold,
-                        score_explanation = EXCLUDED.score_explanation,
-                        updated_at = now()
+                    DO NOTHING
                     RETURNING *
+                ),
+                selected AS (
+                    SELECT *
+                    FROM upserted
+                    UNION ALL
+                    SELECT candidate.*
+                    FROM eal_match_candidates AS candidate
+                    WHERE candidate.tenant_id = $1::uuid
+                      AND candidate.alert_rule_id = $2::uuid
+                      AND candidate.alert_rule_revision_id = $3::uuid
+                      AND candidate.revision_id = $4::uuid
+                      AND candidate.embedding_id = $5::uuid
+                      AND candidate.canonical_match_key = $6
+                      AND NOT EXISTS (SELECT 1 FROM upserted)
+                    LIMIT 1
                 )
-                SELECT row_to_json(upserted)::text AS data
-                FROM upserted
+                SELECT row_to_json(selected)::text AS data
+                FROM selected
                 "#,
                 values,
             ))
@@ -636,22 +655,33 @@ fn vector_literal(values: &[f32]) -> String {
     vector
 }
 
-fn match_key(
+struct MatchIdentity<'a> {
     tenant_id: Uuid,
     alert_rule_id: Uuid,
-    content_sha256: &str,
-    model: &str,
-    model_version: &str,
+    alert_rule_revision_id: Uuid,
+    page_revision_id: Uuid,
+    content_sha256: &'a str,
+    model: &'a str,
+    model_version: &'a str,
     dimensions: u32,
     normalization: VectorNormalization,
-) -> String {
-    sha256_hex(
-        format!(
-            "{tenant_id}\n{alert_rule_id}\n{content_sha256}\n{model}\n{model_version}\n{dimensions}\n{}",
-            normalization_name(normalization)
-        )
-        .as_bytes(),
-    )
+}
+
+fn match_key(identity: MatchIdentity<'_>) -> String {
+    let canonical_fields = [
+        identity.tenant_id.to_string(),
+        identity.alert_rule_id.to_string(),
+        identity.alert_rule_revision_id.to_string(),
+        identity.page_revision_id.to_string(),
+        identity.content_sha256.to_owned(),
+        identity.model.to_owned(),
+        identity.model_version.to_owned(),
+        identity.dimensions.to_string(),
+        normalization_name(identity.normalization).to_owned(),
+    ];
+    let canonical_json = serde_json::to_vec(&canonical_fields)
+        .expect("serializing canonical match identity fields cannot fail");
+    sha256_hex(&canonical_json)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -675,41 +705,84 @@ mod tests {
     }
 
     #[test]
-    fn match_identity_changes_with_content_or_model_provenance() {
+    fn match_identity_binds_rule_page_content_and_model_revisions() {
         let tenant = Uuid::nil();
         let rule = Uuid::from_u128(1);
-        let base = match_key(
-            tenant,
-            rule,
-            "a",
-            "model",
-            "v1",
-            3,
-            VectorNormalization::L2,
+        let rule_revision = Uuid::from_u128(2);
+        let page_revision = Uuid::from_u128(3);
+        let key = |tenant_id, alert_rule_revision_id, page_revision_id, content, version| {
+            match_key(MatchIdentity {
+                tenant_id,
+                alert_rule_id: rule,
+                alert_rule_revision_id,
+                page_revision_id,
+                content_sha256: content,
+                model: "model",
+                model_version: version,
+                dimensions: 3,
+                normalization: VectorNormalization::L2,
+            })
+        };
+        let base = key(tenant, rule_revision, page_revision, "a", "v1");
+        assert_eq!(
+            base,
+            key(tenant, rule_revision, page_revision, "a", "v1")
         );
         assert_ne!(
             base,
-            match_key(
-                tenant,
-                rule,
-                "b",
-                "model",
-                "v1",
-                3,
-                VectorNormalization::L2,
-            )
-        );
-        assert_ne!(
-            base,
-            match_key(
-                tenant,
-                rule,
+            key(
+                Uuid::from_u128(9),
+                rule_revision,
+                page_revision,
                 "a",
-                "model",
-                "v2",
-                3,
-                VectorNormalization::L2,
+                "v1",
             )
         );
+        assert_ne!(
+            base,
+            key(tenant, rule_revision, page_revision, "b", "v1")
+        );
+        assert_ne!(
+            base,
+            key(tenant, rule_revision, page_revision, "a", "v2")
+        );
+        assert_ne!(
+            base,
+            key(
+                tenant,
+                Uuid::from_u128(4),
+                page_revision,
+                "a",
+                "v1",
+            )
+        );
+        assert_ne!(
+            base,
+            key(
+                tenant,
+                rule_revision,
+                Uuid::from_u128(5),
+                "a",
+                "v1",
+            )
+        );
+    }
+
+    #[test]
+    fn match_identity_serialization_has_unambiguous_field_boundaries() {
+        let identity = |model, model_version| {
+            match_key(MatchIdentity {
+                tenant_id: Uuid::nil(),
+                alert_rule_id: Uuid::from_u128(1),
+                alert_rule_revision_id: Uuid::from_u128(2),
+                page_revision_id: Uuid::from_u128(3),
+                content_sha256: "content",
+                model,
+                model_version,
+                dimensions: 3,
+                normalization: VectorNormalization::L2,
+            })
+        };
+        assert_ne!(identity("model\nversion", "one"), identity("model", "version\none"));
     }
 }
