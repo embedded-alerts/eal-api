@@ -197,6 +197,7 @@ async fn evaluate_matches(
         database,
         auth.tenant_id,
         input.alert_rule_id,
+        rule.revision_id,
         threshold,
         input.search,
     )

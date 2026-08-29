@@ -5,6 +5,8 @@ const SEMANTIC_INPUT_MIGRATION: &str =
     include_str!("../migrations/003_semantic_embedding_inputs.sql");
 const ALERT_RULE_MIGRATION: &str =
     include_str!("../migrations/004_durable_alert_rules_and_authz.sql");
+const MATCH_IDENTITY_MIGRATION: &str =
+    include_str!("../migrations/005_revision_bound_match_identity.sql");
 
 pub async fn migrate_all(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     let transaction = db.begin().await?;
@@ -18,6 +20,9 @@ pub async fn migrate_all(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> 
         .execute_unprepared(SEMANTIC_INPUT_MIGRATION)
         .await?;
     transaction.execute_unprepared(ALERT_RULE_MIGRATION).await?;
+    transaction
+        .execute_unprepared(MATCH_IDENTITY_MIGRATION)
+        .await?;
     transaction.commit().await?;
     Ok(())
 }
@@ -37,8 +42,21 @@ pub async fn schema_ready(db: &DatabaseConnection) -> Result<bool, sea_orm::DbEr
                 AND to_regclass('public.eal_alert_rule_revisions') IS NOT NULL
                 AND EXISTS (
                     SELECT 1
+                    FROM pg_attribute
+                    WHERE attrelid = 'public.eal_match_candidates'::regclass
+                      AND attname = 'alert_rule_revision_id'
+                      AND NOT attisdropped
+                )
+                AND EXISTS (
+                    SELECT 1
                     FROM pg_trigger
                     WHERE tgname = 'eal_alert_rule_revisions_immutable'
+                      AND NOT tgisinternal
+                )
+                AND EXISTS (
+                    SELECT 1
+                    FROM pg_trigger
+                    WHERE tgname = 'eal_match_candidates_evidence_immutable'
                       AND NOT tgisinternal
                 ) AS ready
             "#
