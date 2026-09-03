@@ -13,7 +13,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 eal-interfaces = { path = "crates/interfaces-compat", package = "eal-interfaces-compat" }
 eal-query = { path = "crates/query" }
-eal-semantic-contracts = { git = "https://github.com/embedded-alerts/eal-interfaces", rev = "62cdad410ace1a8b0b1fb15648ad4731e9786de4", package = "eal-semantic-contracts" }
+eal-semantic-contracts = { git = "https://github.com/embedded-alerts/eal-interfaces", rev = "34f7043b7537618197231cdcc06033336b13991b", package = "eal-semantic-contracts" }
 futures-util = "0.3"
 hex = "0.4"
 hmac = "0.12"
