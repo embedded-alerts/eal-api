@@ -31,6 +31,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo tree --locked=false -i tinyvec -e features
-          cargo tree --locked=false -i unicode-normalization -e features || true
-          cargo tree --locked=false -i idna_adapter -e features || true
+          cargo tree -i tinyvec -e features
+          cargo tree -i unicode-normalization -e features || true
+          cargo tree -i idna_adapter -e features || true
