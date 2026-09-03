@@ -1,0 +1,91 @@
+name: DEN-3459 exact-head reconcile
+
+on:
+  push:
+    branches:
+      - agent/den-3461-domain-scoped-indexing
+    paths:
+      - .github/workflows/den3459-exact-head.yml
+
+permissions:
+  contents: write
+  statuses: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  reconcile-and-certify:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eal_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eal_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eal_test
+      APP_DATABASE_URL: postgres://eal_app_test:eal_app_test@127.0.0.1:5432/eal_test
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Check out exact PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
+
+      - name: Assemble final reconciliation commit
+        run: |
+          set -euo pipefail
+          python3 scripts/den3459_reconcile.py
+          git rm -f --ignore-unmatch -- scripts/.den3459-probe
+          cargo fmt --all
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            migrations/004_durable_alert_rules_and_authz.sql \
+            src/alert_store.rs \
+            tests/alert_revision_owner_rls_contract.rs \
+            scripts/.den3459-probe
+          git commit -m "fix(DEN-3459): materialize immutable revision ownership for RLS"
+          git diff --exit-code
+          git rev-parse HEAD | tee /tmp/final_sha
+
+      - name: Verify repository contract at final HEAD
+        run: python3 scripts/verify_repo.py
+
+      - name: Verify formatting at final HEAD
+        run: cargo fmt --all -- --check
+
+      - name: Verify strict Clippy at final HEAD
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Verify unit, HTTP, WebSocket, and PostgreSQL authorization at final HEAD
+        run: cargo test --all-targets --all-features -- --nocapture
+
+      - name: Push certified final HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          final_sha="$(cat /tmp/final_sha)"
+          git push origin "HEAD:agent/den-3461-domain-scoped-indexing"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${final_sha}" \
+            -f state=success \
+            -f context="DEN-3459 exact-head authorization" \
+            -f description="Durable rules, JWT, WebSocket, forced-RLS, and pgvector tests passed" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh pr comment 8 --body "Exact-head authorization certification passed for \`${final_sha}\` in run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}. The tested commit includes durable tenant/owner alert-rule revisions, direct forced-RLS revision ownership, verified JWT HTTP/WebSocket authorization, explicit origin checks, restart persistence, cross-tenant denial, owner/admin visibility, and immutable-revision tests."

@@ -2,19 +2,32 @@
 name = "eal-api"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.94"
 license = "MIT"
 
 [dependencies]
 anyhow = "1"
 axum = { version = "0.8", features = ["macros", "ws"] }
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
+eal-interfaces = { path = "crates/interfaces-compat", package = "eal-interfaces-compat" }
+eal-query = { path = "crates/query" }
+eal-semantic-contracts = { git = "https://github.com/embedded-alerts/eal-interfaces", rev = "34f7043b7537618197231cdcc06033336b13991b", package = "eal-semantic-contracts" }
 futures-util = "0.3"
+hex = "0.4"
+hmac = "0.12"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sea-orm = { version = "2.0", features = ["macros", "runtime-tokio-rustls", "sqlx-postgres"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync"] }
 tower-http = { version = "0.7", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
 uuid = { version = "1", features = ["serde", "v4"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
