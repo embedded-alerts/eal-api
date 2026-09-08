@@ -2,11 +2,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::source_scope::{normalize_source_filters, validate_source_filters};
+
 const MAX_NAME_BYTES: usize = 256;
 const MAX_QUERY_CHARS: usize = 700;
 const MAX_MODEL_BYTES: usize = 160;
-const MAX_SOURCE_FILTERS: usize = 128;
-const MAX_SOURCE_FILTER_BYTES: usize = 512;
 const MAX_DELIVERY_CHANNELS: usize = 32;
 const MAX_DELIVERY_CHANNEL_BYTES: usize = 120;
 
@@ -48,12 +48,7 @@ impl CreateAlertRule {
         self.name = self.name.trim().to_owned();
         self.query_text = collapse_whitespace(&self.query_text);
         self.embedding_model = self.embedding_model.trim().to_owned();
-        normalize_list(
-            &mut self.source_filters,
-            MAX_SOURCE_FILTERS,
-            MAX_SOURCE_FILTER_BYTES,
-            "source_filters",
-        )?;
+        normalize_source_filters(&mut self.source_filters).map_err(|error| error.to_string())?;
         normalize_list(
             &mut self.delivery_channels,
             MAX_DELIVERY_CHANNELS,
@@ -86,12 +81,7 @@ impl CreateAlertRule {
         {
             return Err("similarity_threshold must be finite and between 0 and 1".into());
         }
-        validate_list(
-            &self.source_filters,
-            MAX_SOURCE_FILTERS,
-            MAX_SOURCE_FILTER_BYTES,
-            "source_filters",
-        )?;
+        validate_source_filters(&self.source_filters).map_err(|error| error.to_string())?;
         validate_list(
             &self.delivery_channels,
             MAX_DELIVERY_CHANNELS,
@@ -148,27 +138,37 @@ fn collapse_whitespace(input: &str) -> String {
 mod tests {
     use super::*;
 
+    const SOURCE_A: &str = "11111111-1111-1111-1111-111111111111";
+    const SOURCE_B: &str = "22222222-2222-2222-2222-222222222222";
+
     fn valid_input() -> CreateAlertRule {
         CreateAlertRule {
             name: " Renewable launches ".into(),
             query_text: " Notify me when Acme launches renewable tools. ".into(),
             embedding_model: " text-embedding-v1 ".into(),
             similarity_threshold: 0.82,
-            source_filters: vec!["source-b".into(), " source-a ".into(), "source-b".into()],
+            source_filters: vec![
+                format!("source:{SOURCE_B}"),
+                format!(" {SOURCE_A} "),
+                format!("source:{SOURCE_B}"),
+            ],
             delivery_channels: vec!["in_app".into()],
             enabled: true,
         }
     }
 
     #[test]
-    fn normalizes_bounded_rule_input() {
+    fn normalizes_bounded_rule_input_and_typed_source_scope() {
         let normalized = valid_input().normalized().expect("valid rule");
         assert_eq!(normalized.name, "Renewable launches");
         assert_eq!(
             normalized.query_text,
             "Notify me when Acme launches renewable tools."
         );
-        assert_eq!(normalized.source_filters, ["source-a", "source-b"]);
+        assert_eq!(
+            normalized.source_filters,
+            [format!("source:{SOURCE_A}"), format!("source:{SOURCE_B}")]
+        );
     }
 
     #[test]
@@ -180,5 +180,14 @@ mod tests {
         let mut input = valid_input();
         input.query_text = "x".repeat(MAX_QUERY_CHARS + 1);
         assert!(input.normalized().is_err());
+    }
+
+    #[test]
+    fn rejects_untyped_or_malformed_source_filters() {
+        let mut input = valid_input();
+        input.source_filters = vec!["source-name-from-ui".into()];
+        let error = input.normalized().expect_err("untyped filter must fail");
+        assert!(error.contains("UUID"));
+        assert!(!error.contains("source-name-from-ui"));
     }
 }

@@ -169,37 +169,48 @@ async fn evaluate_matches(
     State(state): State<AppState>,
     Json(input): Json<EvaluateMatchesRequest>,
 ) -> Result<Json<Vec<MatchCandidate>>, HttpError> {
-    if !input.threshold.is_finite() || !(0.0..=1.0).contains(&input.threshold) {
+    let EvaluateMatchesRequest {
+        alert_rule_id,
+        threshold: requested_threshold,
+        mut search,
+    } = input;
+    if !requested_threshold.is_finite() || !(0.0..=1.0).contains(&requested_threshold) {
         return Err(HttpError::validation(
             "threshold must be finite and between 0 and 1",
         ));
     }
-    input.search.validate().map_err(HttpError::validation)?;
+    search.validate().map_err(HttpError::validation)?;
     let database = require_database(&state)?;
     let rule = alert_store::require_alert_rule(
         database,
         auth.tenant_id,
-        input.alert_rule_id,
+        alert_rule_id,
         &auth.subject,
         auth.is_tenant_admin(),
     )
     .await?;
     require_enabled_alert_rule(rule.enabled)?;
-    if input.search.embedding.model != rule.embedding_model {
+    if search.embedding.model != rule.embedding_model {
         return Err(HttpError::validation(
             "search embedding model must match the active alert-rule revision",
         ));
     }
-    let threshold = input
-        .threshold
-        .max(f64::from(rule.similarity_threshold));
+
+    search.source_ids = crate::source_scope::constrain_search_sources(
+        &rule.source_filters,
+        &search.source_ids,
+    )
+    .map_err(|error| HttpError::validation(error.to_string()))?;
+    search.validate().map_err(HttpError::validation)?;
+
+    let threshold = requested_threshold.max(f64::from(rule.similarity_threshold));
     let candidates = store::evaluate_matches(
         database,
         auth.tenant_id,
-        input.alert_rule_id,
+        alert_rule_id,
         rule.revision_id,
         threshold,
-        input.search,
+        search,
     )
     .await?;
     for candidate in &candidates {
