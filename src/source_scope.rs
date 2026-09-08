@@ -16,9 +16,7 @@ impl fmt::Display for SourceScopeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::TooManyRuleFilters => "source_filters must contain at most 100 source IDs",
-            Self::InvalidRuleFilter => {
-                "each source_filters value must be a UUID or source:<UUID>"
-            }
+            Self::InvalidRuleFilter => "each source_filters value must be a UUID or source:<UUID>",
             Self::RequestedSourceOutsideRuleScope => {
                 "requested source_ids must be a subset of the alert rule source_filters"
             }
@@ -73,7 +71,10 @@ pub fn constrain_search_sources(
         return Ok(rule_scope.into_iter().collect());
     }
 
-    if requested.iter().any(|source_id| !rule_scope.contains(source_id)) {
+    if requested
+        .iter()
+        .any(|source_id| !rule_scope.contains(source_id))
+    {
         return Err(SourceScopeError::RequestedSourceOutsideRuleScope);
     }
 
@@ -137,8 +138,7 @@ mod tests {
     #[test]
     fn empty_rule_scope_preserves_a_bounded_request_scope() {
         assert_eq!(
-            constrain_search_sources(&[], &[id(2), id(1), id(2)])
-                .expect("unrestricted rule"),
+            constrain_search_sources(&[], &[id(2), id(1), id(2)]).expect("unrestricted rule"),
             [id(1), id(2)]
         );
     }
