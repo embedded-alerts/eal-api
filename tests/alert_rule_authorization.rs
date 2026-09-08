@@ -2,13 +2,15 @@ use eal_api::{alert_store, alerts::CreateAlertRule, migrations};
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait};
 use uuid::Uuid;
 
+const APPROVED_SOURCE: &str = "11111111-1111-1111-1111-111111111111";
+
 fn input(name: &str) -> CreateAlertRule {
     CreateAlertRule {
         name: name.into(),
         query_text: "Notify me when Acme launches renewable energy tools.".into(),
         embedding_model: "fixture-model".into(),
         similarity_threshold: 0.8,
-        source_filters: vec!["approved-source".into()],
+        source_filters: vec![format!("source:{APPROVED_SOURCE}")],
         delivery_channels: vec!["in_app".into()],
         enabled: true,
     }
@@ -128,6 +130,10 @@ async fn alert_rules_survive_restart_and_enforce_tenant_owner_boundaries() {
     assert_eq!(user_a.len(), 1);
     assert_eq!(user_a[0].id, owned.id);
     assert_eq!(user_a[0].revision_id, owned.revision_id);
+    assert_eq!(
+        user_a[0].source_filters,
+        [format!("source:{APPROVED_SOURCE}")]
+    );
 
     let user_b = alert_store::list_alert_rules(&restarted, tenant_a, "user-b", false)
         .await
