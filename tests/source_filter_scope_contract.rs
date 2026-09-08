@@ -2,9 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use eal_api::source_scope::{
-    constrain_search_sources, normalize_source_filters, SourceScopeError,
-};
+use eal_api::source_scope::{SourceScopeError, constrain_search_sources, normalize_source_filters};
 use uuid::Uuid;
 
 fn source(value: u128) -> Uuid {
