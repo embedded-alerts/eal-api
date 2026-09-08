@@ -196,7 +196,7 @@ async fn evaluate_matches(
         ));
     }
 
-    search.source_ids = crate::source_scope::constrain_search_sources(
+    search.source_ids = eal_api::source_scope::constrain_search_sources(
         &rule.source_filters,
         &search.source_ids,
     )
