@@ -1,0 +1,9 @@
+[package]
+name = "eal-query"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+eal-semantic-contracts = { git = "https://github.com/embedded-alerts/eal-interfaces", rev = "34f7043b7537618197231cdcc06033336b13991b", package = "eal-semantic-contracts" }
