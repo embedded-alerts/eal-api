@@ -1,0 +1,42 @@
+name: Git commit embeddings
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+    inputs:
+      before_sha:
+        description: Optional exclusive range start for a bounded backfill
+        required: false
+        type: string
+      after_sha:
+        description: Optional inclusive range end; defaults to the selected branch head
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  embed-commits:
+    if: github.event_name != 'push' || github.event.deleted == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.after_sha || github.event.after || github.sha }}
+
+      - name: Generate commit embeddings
+        uses: embedded-alerts/.github/.github/actions/commit-embeddings@453974465371d21ffb59ae2a125f5a04404720db
+        with:
+          repository: ${{ github.repository }}
+          before-sha: ${{ inputs.before_sha || github.event.before || '' }}
+          after-sha: ${{ inputs.after_sha || github.event.after || github.sha }}
+          ref-name: ${{ github.ref_name }}
+          webhook-url: ${{ vars.EAL_COMMIT_EMBEDDINGS_WEBHOOK_URL }}
+          webhook-token: ${{ secrets.EAL_COMMIT_EMBEDDINGS_WEBHOOK_TOKEN }}
