@@ -7,10 +7,8 @@ const ALERT_RULE_MIGRATION: &str =
     include_str!("../migrations/004_durable_alert_rules_and_authz.sql");
 const MATCH_IDENTITY_MIGRATION: &str =
     include_str!("../migrations/005_revision_bound_match_identity.sql");
-const REVERSE_ALERT_MIGRATION: &str =
-    include_str!("../migrations/006_reverse_alert_hot_path.sql");
-const ACTIVE_ALERT_LIMIT_MIGRATION: &str =
-    include_str!("../migrations/007_active_alert_limit.sql");
+const REVERSE_ALERT_MIGRATION: &str = include_str!("../migrations/006_reverse_alert_hot_path.sql");
+const ACTIVE_ALERT_LIMIT_MIGRATION: &str = include_str!("../migrations/007_active_alert_limit.sql");
 
 pub async fn migrate_all(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     let transaction = db.begin().await?;
