@@ -9,6 +9,8 @@ const MATCH_IDENTITY_MIGRATION: &str =
     include_str!("../migrations/005_revision_bound_match_identity.sql");
 const REVERSE_ALERT_MIGRATION: &str =
     include_str!("../migrations/006_reverse_alert_hot_path.sql");
+const ACTIVE_ALERT_LIMIT_MIGRATION: &str =
+    include_str!("../migrations/007_active_alert_limit.sql");
 
 pub async fn migrate_all(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     let transaction = db.begin().await?;
@@ -27,6 +29,9 @@ pub async fn migrate_all(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> 
         .await?;
     transaction
         .execute_unprepared(REVERSE_ALERT_MIGRATION)
+        .await?;
+    transaction
+        .execute_unprepared(ACTIVE_ALERT_LIMIT_MIGRATION)
         .await?;
     transaction.commit().await?;
     Ok(())
@@ -70,6 +75,12 @@ pub async fn schema_ready(db: &DatabaseConnection) -> Result<bool, sea_orm::DbEr
                     SELECT 1
                     FROM pg_trigger
                     WHERE tgname = 'eal_alert_rule_embeddings_immutable'
+                      AND NOT tgisinternal
+                )
+                AND EXISTS (
+                    SELECT 1
+                    FROM pg_trigger
+                    WHERE tgname = 'eal_alert_rules_active_limit'
                       AND NOT tgisinternal
                 )
                 AND EXISTS (
