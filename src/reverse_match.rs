@@ -227,14 +227,11 @@ pub async fn upsert_alert_rule_embedding(
             values,
         ))
         .await?;
-    let wire: AlertEmbeddingWire = row
-        .map(decode_json_row)
-        .transpose()?
-        .ok_or_else(|| {
-            HttpError::validation(
-                "alert embedding must target the enabled active rule revision and its configured model",
-            )
-        })?;
+    let wire: AlertEmbeddingWire = row.map(decode_json_row).transpose()?.ok_or_else(|| {
+        HttpError::validation(
+            "alert embedding must target the enabled active rule revision and its configured model",
+        )
+    })?;
     if wire.embedding_sha256 != vector_sha256 {
         return Err(HttpError::conflict(
             "an immutable embedding already exists for this alert revision and model space",
@@ -269,13 +266,7 @@ pub async fn ingest_and_reverse_match(
     )
     .await?;
     let page_vector_sha256 = embedding_sha256(&request.embedding.values);
-    let candidate_rows = find_alert_candidates(
-        &transaction,
-        tenant_id,
-        source_id,
-        request,
-    )
-    .await?;
+    let candidate_rows = find_alert_candidates(&transaction, tenant_id, source_id, request).await?;
     let mut candidates = Vec::with_capacity(candidate_rows.len());
     for candidate in candidate_rows {
         if !candidate.similarity.is_finite() || candidate.similarity < candidate.threshold {
@@ -638,9 +629,9 @@ async fn persist_reverse_candidate(
             values,
         ))
         .await?;
-    row.map(decode_json_row)
-        .transpose()?
-        .ok_or_else(|| HttpError::conflict("canonical match identity exists with different evidence"))
+    row.map(decode_json_row).transpose()?.ok_or_else(|| {
+        HttpError::conflict("canonical match identity exists with different evidence")
+    })
 }
 
 fn default_max_candidates() -> u16 {
@@ -729,7 +720,10 @@ mod tests {
 
     #[test]
     fn vector_fingerprint_canonicalizes_signed_zero() {
-        assert_eq!(embedding_sha256(&[0.0, 1.0]), embedding_sha256(&[-0.0, 1.0]));
+        assert_eq!(
+            embedding_sha256(&[0.0, 1.0]),
+            embedding_sha256(&[-0.0, 1.0])
+        );
     }
 
     #[test]
