@@ -199,8 +199,8 @@ async fn transient_reverse_match_creates_durable_candidate_without_page_vector()
         url: "https://example.com/rust-consensus".into(),
         final_url: "https://example.com/rust-consensus".into(),
         title: Some("Rust consensus engine".into()),
-        content_text: "A new distributed consensus engine implemented in Rust uses replicated logs."
-            .into(),
+        content_text:
+            "A new distributed consensus engine implemented in Rust uses replicated logs.".into(),
         content_type: "text/html".into(),
         http_status: 200,
         published_at: None,
