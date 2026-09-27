@@ -17,7 +17,7 @@ async fn insert_source(
     source_id: Uuid,
 ) -> Result<(), sea_orm::DbErr> {
     database
-        .execute(&Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             INSERT INTO eal_sources (
@@ -56,7 +56,7 @@ async fn insert_active_rule(
     source_filter: Option<Uuid>,
 ) -> Result<(), sea_orm::DbErr> {
     database
-        .execute(&Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             INSERT INTO eal_alert_rules (id, tenant_id, owner_subject)
@@ -74,7 +74,7 @@ async fn insert_active_rule(
         .map(|source_id| format!(r#"["source:{source_id}"]"#))
         .unwrap_or_else(|| "[]".to_owned());
     database
-        .execute(&Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             INSERT INTO eal_alert_rule_revisions (
@@ -117,7 +117,7 @@ async fn insert_active_rule(
         .await?;
 
     database
-        .execute(&Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             UPDATE eal_alert_rules
@@ -140,7 +140,7 @@ async fn scalar_i64(
     values: Vec<Value>,
 ) -> Result<i64, sea_orm::DbErr> {
     let row = database
-        .query_one(&Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             values,
