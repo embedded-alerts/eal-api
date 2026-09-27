@@ -1,8 +1,22 @@
+use std::sync::Once;
+
 use chrono::Utc;
 use eal_api::{migrations, reverse_match};
 use eal_interfaces::{EmbeddingPayload, VectorNormalization};
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, Value};
 use uuid::Uuid;
+
+static TRACING: Once = Once::new();
+
+fn init_tracing() {
+    TRACING.call_once(|| {
+        tracing_subscriber::fmt()
+            .with_test_writer()
+            .with_max_level(tracing::Level::TRACE)
+            .try_init()
+            .ok();
+    });
+}
 
 async fn test_database() -> Option<DatabaseConnection> {
     let url = std::env::var("DATABASE_URL").ok()?;
@@ -152,6 +166,7 @@ async fn scalar_i64(
 
 #[tokio::test]
 async fn transient_reverse_match_creates_durable_candidate_without_page_vector() {
+    init_tracing();
     let Some(database) = test_database().await else {
         return;
     };
@@ -284,6 +299,7 @@ async fn transient_reverse_match_creates_durable_candidate_without_page_vector()
 
 #[tokio::test]
 async fn durable_activation_boundary_rejects_eleventh_enabled_search() {
+    init_tracing();
     let Some(database) = test_database().await else {
         return;
     };
