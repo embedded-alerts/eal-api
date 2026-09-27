@@ -8,6 +8,7 @@ pub mod error;
 pub mod indexing;
 pub mod migrations;
 pub mod query_embedding;
+pub mod reverse_match;
 pub mod source_scope;
 #[rustfmt::skip]
 pub mod store;
