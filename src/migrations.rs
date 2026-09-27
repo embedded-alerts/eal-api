@@ -7,6 +7,8 @@ const ALERT_RULE_MIGRATION: &str =
     include_str!("../migrations/004_durable_alert_rules_and_authz.sql");
 const MATCH_IDENTITY_MIGRATION: &str =
     include_str!("../migrations/005_revision_bound_match_identity.sql");
+const REVERSE_ALERT_MIGRATION: &str =
+    include_str!("../migrations/006_reverse_alert_hot_path.sql");
 
 pub async fn migrate_all(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     let transaction = db.begin().await?;
@@ -23,6 +25,9 @@ pub async fn migrate_all(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> 
     transaction
         .execute_unprepared(MATCH_IDENTITY_MIGRATION)
         .await?;
+    transaction
+        .execute_unprepared(REVERSE_ALERT_MIGRATION)
+        .await?;
     transaction.commit().await?;
     Ok(())
 }
@@ -36,6 +41,7 @@ pub async fn schema_ready(db: &DatabaseConnection) -> Result<bool, sea_orm::DbEr
                 to_regclass('public.eal_sources') IS NOT NULL
                 AND to_regclass('public.eal_page_revisions') IS NOT NULL
                 AND to_regclass('public.eal_embeddings') IS NOT NULL
+                AND to_regclass('public.eal_alert_rule_embeddings') IS NOT NULL
                 AND to_regclass('public.eal_match_candidates') IS NOT NULL
                 AND to_regclass('public.eal_semantic_input_sets') IS NOT NULL
                 AND to_regclass('public.eal_alert_rules') IS NOT NULL
@@ -49,8 +55,21 @@ pub async fn schema_ready(db: &DatabaseConnection) -> Result<bool, sea_orm::DbEr
                 )
                 AND EXISTS (
                     SELECT 1
+                    FROM pg_attribute
+                    WHERE attrelid = 'public.eal_match_candidates'::regclass
+                      AND attname = 'match_mode'
+                      AND NOT attisdropped
+                )
+                AND EXISTS (
+                    SELECT 1
                     FROM pg_trigger
                     WHERE tgname = 'eal_alert_rule_revisions_immutable'
+                      AND NOT tgisinternal
+                )
+                AND EXISTS (
+                    SELECT 1
+                    FROM pg_trigger
+                    WHERE tgname = 'eal_alert_rule_embeddings_immutable'
                       AND NOT tgisinternal
                 )
                 AND EXISTS (
