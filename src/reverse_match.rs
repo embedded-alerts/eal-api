@@ -500,6 +500,8 @@ async fn find_alert_candidates(
                   AND embedding.normalization = $6
                   AND revision.enabled = TRUE
                   AND revision.embedding_model = $3
+                  AND 1.0 - (embedding.embedding <=> CAST($7 AS vector))
+                      >= revision.similarity_threshold::double precision
                   AND (
                       jsonb_array_length(revision.source_filters) = 0
                       OR revision.source_filters ? ('source:' || $2::uuid::text)
