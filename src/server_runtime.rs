@@ -20,7 +20,7 @@ use eal_api::{
     alerts::{AlertRule, CreateAlertRule},
     auth::{AuthConfig, AuthContext, ROLES_HEADER, SUBJECT_HEADER},
     error::HttpError,
-    indexing, migrations, store, tenant, worker_auth,
+    indexing, migrations, reverse_match, store, tenant, worker_auth,
 };
 use eal_interfaces::{
     CreateSourcePolicy, EmbeddingSearchRequest, EmbeddingSearchResponse, MatchCandidate,
@@ -263,9 +263,17 @@ fn build_router(state: AppState) -> Router {
         .route("/healthz", get(health))
         .route("/v1/alerts", get(list_records).post(create_record))
         .route("/v1/alerts/{id}", get(get_record))
+        .route(
+            "/v1/alerts/{id}/embedding",
+            post(upsert_alert_embedding),
+        )
         .route("/v1/sources", get(list_sources).post(create_source))
         .route("/v1/sources/{source_id}", get(get_source))
         .route("/v1/sources/{source_id}/pages", post(ingest_page))
+        .route(
+            "/v1/sources/{source_id}/pages/reverse-match",
+            post(reverse_match_page),
+        )
         .route("/v1/embeddings/search", post(search_embeddings))
         .route("/v1/matches/evaluate", post(evaluate_matches))
         .route("/v1/ws", get(ws_upgrade))
@@ -290,7 +298,7 @@ async fn health(State(state): State<AppState>) -> Json<Health> {
             "unavailable"
         },
         indexing_storage_mode: if state.db.is_some() && state.schema_ready {
-            "postgresql_pgvector"
+            "reverse_alert_stream_plus_historical_pgvector"
         } else {
             "unavailable"
         },

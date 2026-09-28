@@ -51,6 +51,31 @@ async fn create_record(
     Ok((StatusCode::CREATED, Json(record)))
 }
 
+async fn upsert_alert_embedding(
+    Path(alert_rule_id): Path<Uuid>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<reverse_match::AlertRuleEmbeddingUpsertRequest>,
+) -> Result<(StatusCode, Json<reverse_match::AlertRuleEmbeddingReceipt>), HttpError> {
+    worker_auth::authorize(&headers)?;
+    let tenant_id = tenant::tenant_id_from_headers(&headers)?;
+    input.validate().map_err(HttpError::validation)?;
+    let database = require_database(&state)?;
+    let receipt = reverse_match::upsert_alert_rule_embedding(
+        database,
+        tenant_id,
+        alert_rule_id,
+        &input,
+    )
+    .await?;
+    let status = if receipt.created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(receipt)))
+}
+
 async fn list_sources(
     Authenticated(auth): Authenticated,
     State(state): State<AppState>,
@@ -140,6 +165,56 @@ async fn ingest_page(
         &revision,
     )?;
     Ok((status, Json(revision)))
+}
+
+async fn reverse_match_page(
+    Path(source_id): Path<Uuid>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<reverse_match::ReverseAlertPageRequest>,
+) -> Result<(StatusCode, Json<reverse_match::ReverseAlertMatchResponse>), HttpError> {
+    worker_auth::authorize(&headers)?;
+    let tenant_id = tenant::tenant_id_from_headers(&headers)?;
+    input.validate().map_err(HttpError::validation)?;
+    if input.source_id != source_id {
+        return Err(HttpError::bad_request(
+            "body source_id must match the source_id route parameter",
+        ));
+    }
+
+    let database = require_database(&state)?;
+    let source = store::get_source(database, tenant_id, source_id)
+        .await?
+        .ok_or_else(|| HttpError::not_found("source policy was not found"))?;
+    if !source.enabled {
+        return Err(HttpError::validation("source policy is disabled"));
+    }
+    let canonical_original =
+        indexing::canonicalize_for_source(&source, &input.url).map_err(HttpError::validation)?;
+    let canonical_final = indexing::canonicalize_for_source(&source, &input.final_url)
+        .map_err(HttpError::validation)?;
+    let response = reverse_match::ingest_and_reverse_match(
+        database,
+        tenant_id,
+        source_id,
+        &input,
+        &canonical_original,
+        &canonical_final,
+    )
+    .await?;
+    let status = if response.changed {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    publish_event(
+        &state,
+        tenant_id,
+        EventAudience::TenantAdministrators,
+        "page.reverse_match_completed",
+        &response,
+    )?;
+    Ok((status, Json(response)))
 }
 
 async fn search_embeddings(
