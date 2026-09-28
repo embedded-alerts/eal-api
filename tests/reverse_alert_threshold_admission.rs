@@ -62,7 +62,7 @@ async fn insert_active_rule(
     revision_id: Uuid,
     similarity_threshold: f64,
     embedding: Vec<f32>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) {
     let owner_subject = format!("threshold-owner-{alert_rule_id}");
     database
         .execute_raw(Statement::from_sql_and_values(
@@ -77,7 +77,8 @@ async fn insert_active_rule(
                 owner_subject.clone().into(),
             ],
         ))
-        .await?;
+        .await
+        .unwrap();
 
     database
         .execute_raw(Statement::from_sql_and_values(
@@ -121,7 +122,8 @@ async fn insert_active_rule(
                 similarity_threshold.into(),
             ],
         ))
-        .await?;
+        .await
+        .unwrap();
 
     database
         .execute_raw(Statement::from_sql_and_values(
@@ -138,7 +140,8 @@ async fn insert_active_rule(
                 alert_rule_id.to_string().into(),
             ],
         ))
-        .await?;
+        .await
+        .unwrap();
 
     let request = reverse_match::AlertRuleEmbeddingUpsertRequest {
         alert_rule_revision_id: revision_id,
@@ -151,8 +154,8 @@ async fn insert_active_rule(
         },
     };
     reverse_match::upsert_alert_rule_embedding(database, tenant_id, alert_rule_id, &request)
-        .await?;
-    Ok(())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -176,8 +179,7 @@ async fn nonqualifying_nearest_neighbor_cannot_consume_top_k_slot() {
         0.99,
         vec![0.95, 0.312_249_9],
     )
-    .await
-    .unwrap();
+    .await;
 
     let qualifying_rule_id = Uuid::new_v4();
     insert_active_rule(
@@ -188,8 +190,7 @@ async fn nonqualifying_nearest_neighbor_cannot_consume_top_k_slot() {
         0.85,
         vec![0.90, 0.435_889_9],
     )
-    .await
-    .unwrap();
+    .await;
 
     let url = format!("https://example.com/{source_id}/threshold-admission");
     let page = reverse_match::ReverseAlertPageRequest {
