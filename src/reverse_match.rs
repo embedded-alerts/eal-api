@@ -15,6 +15,7 @@ use crate::error::HttpError;
 
 const DEFAULT_MAX_CANDIDATES: u16 = 100;
 const MAX_CANDIDATES: u16 = 500;
+const WORKER_RLS_SUBJECT: &str = "embedded-alerts-worker";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AlertRuleEmbeddingUpsertRequest {
@@ -132,6 +133,8 @@ pub async fn upsert_alert_rule_embedding(
     request: &AlertRuleEmbeddingUpsertRequest,
 ) -> Result<AlertRuleEmbeddingReceipt, HttpError> {
     request.validate().map_err(HttpError::validation)?;
+    let transaction = db.begin().await?;
+    set_worker_request_context(&transaction, tenant_id).await?;
     let vector_sha256 = embedding_sha256(&request.embedding.values);
     let generated_at = Utc::now().to_rfc3339();
     let values = vec![
@@ -148,7 +151,7 @@ pub async fn upsert_alert_rule_embedding(
         vector_sha256.clone().into(),
         generated_at.into(),
     ];
-    let row = db
+    let row = transaction
         .query_one_raw(statement(
             r#"
             WITH target AS (
@@ -237,13 +240,15 @@ pub async fn upsert_alert_rule_embedding(
             "an immutable embedding already exists for this alert revision and model space",
         ));
     }
-    Ok(AlertRuleEmbeddingReceipt {
+    let receipt = AlertRuleEmbeddingReceipt {
         id: wire.id,
         alert_rule_id: wire.alert_rule_id,
         alert_rule_revision_id: wire.alert_rule_revision_id,
         embedding_sha256: wire.embedding_sha256,
         created: wire.created,
-    })
+    };
+    transaction.commit().await?;
+    return Ok(receipt);
 }
 
 pub async fn ingest_and_reverse_match(
@@ -256,6 +261,7 @@ pub async fn ingest_and_reverse_match(
 ) -> Result<ReverseAlertMatchResponse, HttpError> {
     request.validate().map_err(HttpError::validation)?;
     let transaction = db.begin().await?;
+    set_worker_request_context(&transaction, tenant_id).await?;
     let page = upsert_page_revision(
         &transaction,
         tenant_id,
@@ -313,14 +319,14 @@ pub async fn ingest_and_reverse_match(
         candidates.push(durable);
     }
     transaction.commit().await?;
-    Ok(ReverseAlertMatchResponse {
+    return Ok(ReverseAlertMatchResponse {
         page_id: page.page_id,
         page_revision_id: page.page_revision_id,
         content_sha256: page.content_sha256,
         changed: page.changed,
         page_vector_persisted: false,
         candidates,
-    })
+    });
 }
 
 async fn upsert_page_revision(
@@ -647,6 +653,27 @@ async fn persist_reverse_candidate(
     })
 }
 
+async fn set_worker_request_context(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> Result<(), sea_orm::DbErr> {
+    transaction
+        .execute_raw(statement(
+            r#"
+            SELECT
+                set_config('app.tenant_id', $1, TRUE),
+                set_config('app.subject', $2, TRUE),
+                set_config('app.is_tenant_admin', 'true', TRUE)
+            "#,
+            vec![
+                tenant_id.to_string().into(),
+                WORKER_RLS_SUBJECT.to_owned().into(),
+            ],
+        ))
+        .await?;
+    return Ok(());
+}
+
 fn default_max_candidates() -> u16 {
     DEFAULT_MAX_CANDIDATES
 }
@@ -788,5 +815,38 @@ mod tests {
             max_candidates: MAX_CANDIDATES + 1,
         };
         assert!(request.validate().is_err());
+    }
+
+    #[tokio::test]
+    async fn worker_context_sets_transaction_local_rls_identity() {
+        let Ok(url) = std::env::var("DATABASE_URL") else {
+            return;
+        };
+        let database = sea_orm::Database::connect(url).await.unwrap();
+        let tenant_id = Uuid::new_v4();
+        let transaction = database.begin().await.unwrap();
+        set_worker_request_context(&transaction, tenant_id)
+            .await
+            .unwrap();
+        let row = transaction
+            .query_one_raw(statement(
+                r#"
+                SELECT
+                    current_setting('app.tenant_id', TRUE) AS tenant_id,
+                    current_setting('app.subject', TRUE) AS subject,
+                    current_setting('app.is_tenant_admin', TRUE) AS is_tenant_admin
+                "#,
+                Vec::new(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let observed_tenant_id: String = row.try_get("", "tenant_id").unwrap();
+        let observed_subject: String = row.try_get("", "subject").unwrap();
+        let observed_is_tenant_admin: String = row.try_get("", "is_tenant_admin").unwrap();
+        assert_eq!(observed_tenant_id, tenant_id.to_string());
+        assert_eq!(observed_subject, WORKER_RLS_SUBJECT);
+        assert_eq!(observed_is_tenant_admin, "true");
+        transaction.rollback().await.unwrap();
     }
 }
