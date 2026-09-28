@@ -68,6 +68,17 @@ async fn upsert_alert_embedding(
         &input,
     )
     .await?;
+    info!(
+        tenant_id = %tenant_id,
+        alert_rule_id = %alert_rule_id,
+        alert_rule_revision_id = %receipt.alert_rule_revision_id,
+        alert_embedding_id = %receipt.id,
+        created = receipt.created,
+        embedding_model = %input.embedding.model,
+        embedding_model_version = %input.embedding.model_version,
+        embedding_dimensions = input.embedding.dimensions,
+        "alert-rule embedding hot-index write completed"
+    );
     let status = if receipt.created {
         StatusCode::CREATED
     } else {
@@ -202,6 +213,19 @@ async fn reverse_match_page(
         &canonical_final,
     )
     .await?;
+    info!(
+        tenant_id = %tenant_id,
+        source_id = %source_id,
+        page_revision_id = %response.page_revision_id,
+        changed = response.changed,
+        page_vector_persisted = response.page_vector_persisted,
+        candidate_count = response.candidates.len(),
+        candidate_limit = input.max_candidates,
+        embedding_model = %input.embedding.model,
+        embedding_model_version = %input.embedding.model_version,
+        embedding_dimensions = input.embedding.dimensions,
+        "reverse alert matching completed"
+    );
     let status = if response.changed {
         StatusCode::CREATED
     } else {
