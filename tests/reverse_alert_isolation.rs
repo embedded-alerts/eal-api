@@ -156,14 +156,10 @@ async fn upsert_alert_embedding(
             values: vec![1.0, 0.0],
         },
     };
-    let receipt = reverse_match::upsert_alert_rule_embedding(
-        database,
-        tenant_id,
-        alert_rule_id,
-        &request,
-    )
-    .await
-    .unwrap();
+    let receipt =
+        reverse_match::upsert_alert_rule_embedding(database, tenant_id, alert_rule_id, &request)
+            .await
+            .unwrap();
     assert!(receipt.created);
 }
 
@@ -174,8 +170,8 @@ fn page_request(source_id: Uuid, model_version: &str) -> reverse_match::ReverseA
         url: url.clone(),
         final_url: url,
         title: Some("Rust consensus engine".into()),
-        content_text:
-            "A distributed consensus engine implemented in Rust uses replicated logs.".into(),
+        content_text: "A distributed consensus engine implemented in Rust uses replicated logs."
+            .into(),
         content_type: "text/html".into(),
         http_status: 200,
         published_at: None,
@@ -205,22 +201,10 @@ async fn reverse_match_never_crosses_tenant_boundary() {
     insert_source(&database, page_tenant_id, source_id)
         .await
         .unwrap();
-    insert_active_rule(
-        &database,
-        alert_tenant_id,
-        alert_rule_id,
-        revision_id,
-        None,
-    )
-    .await
-    .unwrap();
-    upsert_alert_embedding(
-        &database,
-        alert_tenant_id,
-        alert_rule_id,
-        revision_id,
-    )
-    .await;
+    insert_active_rule(&database, alert_tenant_id, alert_rule_id, revision_id, None)
+        .await
+        .unwrap();
+    upsert_alert_embedding(&database, alert_tenant_id, alert_rule_id, revision_id).await;
 
     let page = page_request(source_id, "v1");
     let response = reverse_match::ingest_and_reverse_match(
@@ -249,7 +233,9 @@ async fn reverse_match_applies_source_filter_before_candidate_admission() {
     let alert_rule_id = Uuid::new_v4();
     let revision_id = Uuid::new_v4();
 
-    insert_source(&database, tenant_id, source_id).await.unwrap();
+    insert_source(&database, tenant_id, source_id)
+        .await
+        .unwrap();
     insert_active_rule(
         &database,
         tenant_id,
@@ -287,7 +273,9 @@ async fn reverse_match_never_compares_incompatible_model_versions() {
     let alert_rule_id = Uuid::new_v4();
     let revision_id = Uuid::new_v4();
 
-    insert_source(&database, tenant_id, source_id).await.unwrap();
+    insert_source(&database, tenant_id, source_id)
+        .await
+        .unwrap();
     insert_active_rule(&database, tenant_id, alert_rule_id, revision_id, None)
         .await
         .unwrap();
