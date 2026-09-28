@@ -370,7 +370,7 @@ async fn upsert_page_revision(
                 DO UPDATE SET
                     last_seen_at = EXCLUDED.last_seen_at,
                     updated_at = now()
-                RETURNING id
+                RETURNING id, latest_revision_id
             ),
             inserted_revision AS (
                 INSERT INTO eal_page_revisions (
@@ -390,7 +390,7 @@ async fn upsert_page_revision(
                 SELECT
                     $1::uuid,
                     page.id,
-                    current_page.latest_revision_id,
+                    page.latest_revision_id,
                     $4,
                     $5,
                     NULLIF($6, ''),
@@ -401,7 +401,6 @@ async fn upsert_page_revision(
                     NULLIF($11, '')::timestamptz,
                     $12::timestamptz
                 FROM upserted_page AS page
-                JOIN eal_pages AS current_page ON current_page.id = page.id
                 ON CONFLICT (tenant_id, page_id, content_sha256) DO NOTHING
                 RETURNING id
             ),
@@ -416,16 +415,6 @@ async fn upsert_page_revision(
                   AND revision.content_sha256 = $8
                   AND NOT EXISTS (SELECT 1 FROM inserted_revision)
                 LIMIT 1
-            ),
-            updated_page AS (
-                UPDATE eal_pages AS page
-                SET
-                    latest_revision_id = revision.id,
-                    last_seen_at = $12::timestamptz,
-                    updated_at = now()
-                FROM selected_revision AS revision
-                WHERE page.id = (SELECT id FROM upserted_page)
-                RETURNING page.id
             )
             SELECT json_build_object(
                 'page_id', page.id,
@@ -433,15 +422,37 @@ async fn upsert_page_revision(
                 'content_sha256', $8,
                 'changed', revision.changed
             )::text AS data
-            FROM updated_page AS page
+            FROM upserted_page AS page
             CROSS JOIN selected_revision AS revision
             "#,
             values,
         ))
         .await?;
-    row.map(decode_json_row)
-        .transpose()?
-        .ok_or_else(|| HttpError::internal("transient page ingestion returned no durable revision"))
+    let page: PageWire = row.map(decode_json_row).transpose()?.ok_or_else(|| {
+        HttpError::internal("transient page ingestion returned no durable revision")
+    })?;
+
+    transaction
+        .execute_raw(statement(
+            r#"
+            UPDATE eal_pages
+            SET
+                latest_revision_id = $1::uuid,
+                last_seen_at = $4::timestamptz,
+                updated_at = now()
+            WHERE tenant_id = $2::uuid
+              AND id = $3::uuid
+            "#,
+            vec![
+                page.page_revision_id.to_string().into(),
+                tenant_id.to_string().into(),
+                page.page_id.to_string().into(),
+                request.fetched_at.to_rfc3339().into(),
+            ],
+        ))
+        .await?;
+
+    Ok(page)
 }
 
 async fn find_alert_candidates(
