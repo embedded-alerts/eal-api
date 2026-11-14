@@ -8,6 +8,7 @@ const SOURCE_PREFIX: &str = "source:";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceScopeError {
     TooManyRuleFilters,
+    TooManyRequestedSources,
     InvalidRuleFilter,
     RequestedSourceOutsideRuleScope,
 }
@@ -16,6 +17,7 @@ impl fmt::Display for SourceScopeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::TooManyRuleFilters => "source_filters must contain at most 100 source IDs",
+            Self::TooManyRequestedSources => "requested source_ids must contain at most 100 IDs",
             Self::InvalidRuleFilter => "each source_filters value must be a UUID or source:<UUID>",
             Self::RequestedSourceOutsideRuleScope => {
                 "requested source_ids must be a subset of the alert rule source_filters"
@@ -56,6 +58,9 @@ pub fn constrain_search_sources(
     rule_filters: &[String],
     requested_source_ids: &[Uuid],
 ) -> Result<Vec<Uuid>, SourceScopeError> {
+    if requested_source_ids.len() > MAX_SOURCE_FILTERS {
+        return Err(SourceScopeError::TooManyRequestedSources);
+    }
     let rule_scope = parse_source_filter_ids(rule_filters)?;
     let requested = requested_source_ids
         .iter()
@@ -149,5 +154,31 @@ mod tests {
             .expect_err("malformed filter must fail");
         assert_eq!(error, SourceScopeError::InvalidRuleFilter);
         assert!(!error.to_string().contains("not-a-source-secret"));
+    }
+
+    #[test]
+    fn requested_search_source_scope_is_bounded_even_without_rule_filters() {
+        let within_limit = (1..=MAX_SOURCE_FILTERS)
+            .map(|value| id(value as u128))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            constrain_search_sources(&[], &within_limit).unwrap().len(),
+            MAX_SOURCE_FILTERS
+        );
+
+        let over_limit = (1..=MAX_SOURCE_FILTERS + 1)
+            .map(|value| id(value as u128))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            constrain_search_sources(&[], &over_limit),
+            Err(SourceScopeError::TooManyRequestedSources)
+        );
+        assert_eq!(
+            constrain_search_sources(
+                &[format!("source:{}", id(1))],
+                &vec![id(1); MAX_SOURCE_FILTERS + 1]
+            ),
+            Err(SourceScopeError::TooManyRequestedSources)
+        );
     }
 }
