@@ -180,4 +180,5 @@ mod tests {
             ),
             Err(SourceScopeError::TooManyRequestedSources)
         );
-    }}
+    }
+}
