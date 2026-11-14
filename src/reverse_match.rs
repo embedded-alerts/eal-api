@@ -248,7 +248,7 @@ pub async fn upsert_alert_rule_embedding(
         created: wire.created,
     };
     transaction.commit().await?;
-    return Ok(receipt);
+    Ok(receipt)
 }
 
 pub async fn ingest_and_reverse_match(
@@ -319,14 +319,14 @@ pub async fn ingest_and_reverse_match(
         candidates.push(durable);
     }
     transaction.commit().await?;
-    return Ok(ReverseAlertMatchResponse {
+    Ok(ReverseAlertMatchResponse {
         page_id: page.page_id,
         page_revision_id: page.page_revision_id,
         content_sha256: page.content_sha256,
         changed: page.changed,
         page_vector_persisted: false,
         candidates,
-    });
+    })
 }
 
 async fn upsert_page_revision(
@@ -671,7 +671,7 @@ async fn set_worker_request_context(
             ],
         ))
         .await?;
-    return Ok(());
+    Ok(())
 }
 
 fn default_max_candidates() -> u16 {
